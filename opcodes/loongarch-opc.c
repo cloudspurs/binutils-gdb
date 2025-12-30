@@ -425,11 +425,172 @@ const char *const loongarch_f_cfi_name_alias[32] =
   &LARCH_opts.ase_gabs,			\
   &LARCH_opts.ase_gpcr
 
-static struct loongarch_opcode loongarch_macro_opcodes[] =
+/* For ABI1.0 PCREL32 relocs.  */
+#define INSN_LA_OLD_PCREL32 \
+  "pcaddu12i %1,%%pcrel(%2+0x800)<<32>>44;" \
+  "addi.d %1,%1,%%pcrel(%2+4)-(%%pcrel(%2+4+0x800)>>12<<12);", \
+  &LARCH_opts.old_ilp32, \
+  &LARCH_opts.old_lp64
+
+/* For ABI1.0 PCREL64 relocs.  */
+#define INSN_LA_OLD_PCREL64 \
+  "pcaddu12i %1,%%pcrel(%2+0x800)>>12;" \
+  "addi.d %1,%1,%%pcrel(%2+4)-(%%pcrel(%2+4+0x800)>>12<<12);", \
+  &LARCH_opts.old_lp64, 0
+
+/* For ABI1.0 large PCREL.  */
+#define INSN_LA_OLD_LARGE_PCREL \
+  "pcaddu12i %1,(%%pcrel(%3)-(%%pcrel(%3+0x80000000)>>32<<32))<<32>>44;" \
+  "ori %2,$r0,(%%pcrel(%3+4)-(%%pcrel(%3+4+0x80000000)>>32<<32))&0xfff;" \
+  "lu32i.d %2,%%pcrel(%3+8+0x80000000)<<12>>44;" \
+  "lu52i.d %2,%2,%%pcrel(%3+12+0x80000000)>>52;add.d %1,%1,%2;", \
+  &LARCH_opts.old_lp64, 0
+
+static struct loongarch_opcode loongarch_old_macro_opcode[] =
 {
   /* match,    mask,	   name, format, macro, include, exclude, pinfo.  */
   { 0, 0, "li.w", "r,sc", "%f",	0, 0, 0 },
   { 0, 0, "li.d", "r,sc", "%f",	0, 0, 0 },
+
+  { 0, 0, "la", "r,la", "la.global %1,%2", &LARCH_opts.gen_old_reloc, 0, 0},
+
+  { 0, 0, "la.global", "r,la", "la.pcrel %1,%2", &LARCH_opts.old_gpcr, 0, 0},
+  { 0, 0, "la.global", "r,r,la", "la.pcrel %1,%2,%3", &LARCH_opts.old_gpcr, 0, 0},
+  { 0, 0, "la.global", "r,la", "la.abs %1,%2", &LARCH_opts.old_gabs, 0, 0},
+  { 0, 0, "la.global", "r,r,la", "la.abs %1,%3", &LARCH_opts.old_gabs, 0, 0},
+  { 0, 0, "la.global", "r,l", "la.got %1,%2", &LARCH_opts.gen_old_reloc, 0, 0},
+  { 0, 0, "la.global", "r,r,l", "la.got %1,%2,%3", &LARCH_opts.gen_old_reloc, 0, 0},
+    
+  { 0, 0, "la.local", "r,la", "la.abs %1,%2", &LARCH_opts.old_labs, 0, 0},
+  { 0, 0, "la.local", "r,r,la", "la.abs %1,%3", &LARCH_opts.old_labs, 0, 0},
+  { 0, 0, "la.local", "r,la", "la.pcrel %1,%2", &LARCH_opts.gen_old_reloc, 0, 0},
+  { 0, 0, "la.local", "r,r,la", "la.pcrel %1,%2,%3", &LARCH_opts.gen_old_reloc, 0, 0},
+    
+  { 0, 0, "la.abs", "r,la","lu12i.w %1,%%abs(%2)>>12;""ori %1,%1,%%abs(%2)&0xfff;",
+   &LARCH_opts.old_ilp32, &LARCH_opts.old_lp64, 0},
+
+  {0, 0, "la.abs", "r,la",
+  "lu12i.w %1,%%abs(%2)<<32>>44;"
+  "ori %1,%1,%%abs(%2)&0xfff;"
+  "lu32i.d %1,%%abs(%2)<<12>>44;"
+  "lu52i.d %1,%1,%%abs(%2)>>52;",
+  &LARCH_opts.old_lp64, 0, 0},
+   
+  { 0, 0, "la.pcrel", "r,la", INSN_LA_OLD_PCREL32, 0 },
+  { 0, 0, "la.pcrel", "r,la", INSN_LA_OLD_PCREL64, 0 },
+  { 0, 0, "la.pcrel", "r,r,la", INSN_LA_OLD_LARGE_PCREL, 0 },
+
+  {0, 0, "la.got", "r,l",
+  "pcaddu12i %1,(%%pcrel(_GLOBAL_OFFSET_TABLE_+0x800)+%%gprel(%2))<<32>>44;"
+  "ld.w %1,%1,%%pcrel(_GLOBAL_OFFSET_TABLE_+4)+%%gprel(%2)-((%%pcrel(_GLOBAL_OFFSET_TABLE_+4+0x800)+%%gprel(%2))>>12<<12);",
+  &LARCH_opts.old_ilp32, &LARCH_opts.old_lp64, 0},
+   
+  {0, 0, "la.got", "r,l",
+  "pcaddu12i %1,(%%pcrel(_GLOBAL_OFFSET_TABLE_+0x800)+%%gprel(%2))>>12;"
+  "ld.d %1,%1,%%pcrel(_GLOBAL_OFFSET_TABLE_+4)+%%gprel(%2)-((%%pcrel(_GLOBAL_OFFSET_TABLE_+4+0x800)+%%gprel(%2))>>12<<12);",
+  &LARCH_opts.old_lp64, 0, 0},
+
+  {0, 0, "la.got", "r,r,l",
+  "pcaddu12i %1,(%%pcrel(_GLOBAL_OFFSET_TABLE_)+%%gprel(%3)-((%%pcrel(_GLOBAL_OFFSET_TABLE_+0x80000000)+%%gprel(%3))>>32<<32))<<32>>44;"
+  "ori %2,$r0,(%%pcrel(_GLOBAL_OFFSET_TABLE_+4)+%%gprel(%3)-((%%pcrel(_GLOBAL_OFFSET_TABLE_+4+0x80000000)+%%gprel(%3))>>32<<32))&0xfff;"
+  "lu32i.d %2,(%%pcrel(_GLOBAL_OFFSET_TABLE_+8+0x80000000)+%%gprel(%3))<<12>>44;"
+  "lu52i.d %2,%2,(%%pcrel(_GLOBAL_OFFSET_TABLE_+12+0x80000000)+%%gprel(%3))>>52;"
+  "ldx.d %1,%1,%2;",
+  &LARCH_opts.old_lp64, 0, 0},
+   
+  {0, 0, "la.tls.le", "r,la",
+  "lu12i.w %1,%%tprel(%2)>>12;"
+  "ori %1,%1,%%tprel(%2)&0xfff",
+  &LARCH_opts.old_ilp32, 0, 0},
+
+  {0, 0, "la.tls.le", "r,la",
+  "lu12i.w %1,%%tprel(%2)<<32>>44;"
+  "ori %1,%1,%%tprel(%2)&0xfff;"
+  "lu32i.d %1,%%tprel(%2)<<12>>44;"
+  "lu52i.d %1,%1,%%tprel(%2)>>52;",
+  &LARCH_opts.old_lp64, 0, 0},
+   
+  {0, 0, "la.tls.ie", "r,l",
+  "pcaddu12i %1,(%%pcrel(_GLOBAL_OFFSET_TABLE_+0x800)+%%tlsgot(%2))<<32>>44;"
+  "ld.w %1,%1,%%pcrel(_GLOBAL_OFFSET_TABLE_+4)+%%tlsgot(%2)-((%%pcrel(_GLOBAL_OFFSET_TABLE_+4+0x800)+%%tlsgot(%2))>>12<<12);",
+  &LARCH_opts.old_ilp32, &LARCH_opts.old_lp64, 0},
+   
+  {0, 0, "la.tls.ie", "r,l",
+  "pcaddu12i %1,(%%pcrel(_GLOBAL_OFFSET_TABLE_+0x800)+%%tlsgot(%2))>>12;"
+  "ld.d %1,%1,%%pcrel(_GLOBAL_OFFSET_TABLE_+4)+%%tlsgot(%2)-((%%pcrel(_GLOBAL_OFFSET_TABLE_+4+0x800)+%%tlsgot(%2))>>12<<12);",
+  &LARCH_opts.old_lp64, 0, 0},
+
+  {0, 0, "la.tls.ie", "r,r,l",
+  "pcaddu12i %1,(%%pcrel(_GLOBAL_OFFSET_TABLE_)+%%tlsgot(%3)-((%%pcrel(_GLOBAL_OFFSET_TABLE_+0x80000000)+%%tlsgot(%3))>>32<<32))<<32>>44;"
+  "ori %2,$r0,(%%pcrel(_GLOBAL_OFFSET_TABLE_+4)+%%tlsgot(%3)-((%%pcrel(_GLOBAL_OFFSET_TABLE_+4+0x80000000)+%%tlsgot(%3))>>32<<32))&0xfff;"
+  "lu32i.d %2,(%%pcrel(_GLOBAL_OFFSET_TABLE_+8+0x80000000)+%%tlsgot(%3))<<12>>44;"
+  "lu52i.d %2,%2,(%%pcrel(_GLOBAL_OFFSET_TABLE_+12+0x80000000)+%%tlsgot(%3))>>52;"
+  "ldx.d %1,%1,%2;",
+  &LARCH_opts.old_lp64, 0, 0},
+   
+  {0, 0, "la.tls.ld", "r,l",
+  "la.tls.gd %1,%2",
+  &LARCH_opts.gen_old_reloc, 0, 0},
+
+  {0, 0, "la.tls.ld", "r,r,l",
+  "la.tls.gd %1,%2,%3",
+  &LARCH_opts.old_lp64, 0, 0},
+  
+  {0, 0, "la.tls.gd", "r,l",
+  "pcaddu12i %1,(%%pcrel(_GLOBAL_OFFSET_TABLE_+0x800)+%%tlsgd(%2))<<32>>44;"
+  "addi.w %1,%1,%%pcrel(_GLOBAL_OFFSET_TABLE_+4)+%%tlsgd(%2)-((%%pcrel(_GLOBAL_OFFSET_TABLE_+4+0x800)+%%tlsgd(%2))>>12<<12);",
+  &LARCH_opts.old_ilp32, &LARCH_opts.old_lp64, 0},
+   
+  {0, 0, "la.tls.gd", "r,l",
+  "pcaddu12i %1,(%%pcrel(_GLOBAL_OFFSET_TABLE_+0x800)+%%tlsgd(%2))>>12;"
+  "addi.d %1,%1,%%pcrel(_GLOBAL_OFFSET_TABLE_+4)+%%tlsgd(%2)-((%%pcrel(_GLOBAL_OFFSET_TABLE_+4+0x800)+%%tlsgd(%2))>>12<<12);",
+  &LARCH_opts.old_lp64, 0, 0},
+
+  {0, 0, "la.tls.gd", "r,r,l",
+  "pcaddu12i %1,(%%pcrel(_GLOBAL_OFFSET_TABLE_)+%%tlsgd(%3)-((%%pcrel(_GLOBAL_OFFSET_TABLE_+0x80000000)+%%tlsgd(%3))>>32<<32))<<32>>44;"
+  "ori %2,$r0,(%%pcrel(_GLOBAL_OFFSET_TABLE_+4)+%%tlsgd(%3)-((%%pcrel(_GLOBAL_OFFSET_TABLE_+4+0x80000000)+%%tlsgd(%3))>>32<<32))&0xfff;"
+  "lu32i.d %2,(%%pcrel(_GLOBAL_OFFSET_TABLE_+8+0x80000000)+%%tlsgd(%3))<<12>>44;"
+  "lu52i.d %2,%2,(%%pcrel(_GLOBAL_OFFSET_TABLE_+12+0x80000000)+%%tlsgd(%3))>>52;"
+  "add.d %1,%1,%2;",
+  &LARCH_opts.old_lp64, 0, 0},
+
+  /* old jmp macro opcodes.  */
+{0, 0, "beqz", "r,la", "beqz %1,%%pcrel(%2)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0, 0, "bnez", "r,la", "bnez %1,%%pcrel(%2)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0, 0, "bceqz", "c,la", "bceqz %1,%%pcrel(%2)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0, 0, "bcnez", "c,la", "bcnez %1,%%pcrel(%2)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0, 0, "jr", "r", "jirl $r0,%1,0", &LARCH_opts.gen_old_reloc, 0, 0},
+{0, 0, "b", "la", "b %%pcrel(%1)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0, 0, "bl", "la", "bl %%pcrel(%1)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0, 0, "beq", "r,r,la", "beq %1,%2,%%pcrel(%3)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0, 0, "bne", "r,r,la", "bne %1,%2,%%pcrel(%3)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0, 0, "blt", "r,r,la", "blt %1,%2,%%pcrel(%3)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0, 0, "bgt", "r,r,la", "bgt %1,%2,%%pcrel(%3)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0x60000000, 0xfc000000, "bgt", "r0:5,r5:5,sb10:16<<2", 0, 0, 0, 0},
+{0, 0, "bltz", "r,la", "bltz %1,%%pcrel(%2)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0x60000000, 0xfc00001f, "bltz", "r5:5,sb10:16<<2", 0, 0, 0, 0},
+{0, 0, "bgtz", "r,la", "bgtz %1,%%pcrel(%2)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0x60000000, 0xfc0003e0, "bgtz", "r0:5,sb10:16<<2", 0, 0, 0, 0},
+{0, 0, "bge", "r,r,la", "bge %1,%2,%%pcrel(%3)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0, 0, "ble", "r,r,la", "ble %1,%2,%%pcrel(%3)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0x64000000, 0xfc000000, "ble", "r0:5,r5:5,sb10:16<<2", 0, 0, 0, 0},
+{0, 0, "bgez", "r,la", "bgez %1,%%pcrel(%2)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0x64000000, 0xfc00001f, "bgez", "r5:5,sb10:16<<2", 0, 0, 0, 0},
+{0, 0, "blez", "r,la", "blez %1,%%pcrel(%2)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0x64000000, 0xfc0003e0, "blez", "r0:5,sb10:16<<2", 0, 0, 0, 0},
+{0, 0, "bltu", "r,r,la", "bltu %1,%2,%%pcrel(%3)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0x68000000, 0xfc000000, "bltu", "r5:5,r0:5,sb10:16<<2", 0, 0, 0, 0},
+{0, 0, "bgtu", "r,r,la", "bgtu %1,%2,%%pcrel(%3)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0x68000000, 0xfc000000, "bgtu", "r0:5,r5:5,sb10:16<<2", 0, 0, 0, 0},
+{0, 0, "bgeu", "r,r,la", "bgeu %1,%2,%%pcrel(%3)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0, 0, "bleu", "r,r,la", "bleu %1,%2,%%pcrel(%3)", &LARCH_opts.gen_old_reloc, 0, 0},
+{0x6c000000, 0xfc000000, "bleu", "r0:5,r5:5,sb10:16<<2", 0, 0, 0, 0},
+{0} /* Terminate the list.  */
+};
+
+static struct loongarch_opcode loongarch_macro_opcodes[] =
+{
+  /* match,    mask,	   name, format, macro, include, exclude, pinfo.  */
 
   { 0, 0, "la",		"r,la",	  "la.global %1,%2",	0,			0, 0 },
   { 0, 0, "la.global",	"r,la",	  "la.pcrel %1,%2",	&LARCH_opts.ase_gpcr,	0, 0 },
@@ -2742,6 +2903,7 @@ static struct loongarch_opcode loongarch_lbt_opcodes[] =
 
 struct loongarch_ase loongarch_ASEs[] =
 {
+  { &LARCH_opts.ase_ilp32, loongarch_old_macro_opcode,		0, 0, { 0 }, 0, 0 },
   { &LARCH_opts.ase_ilp32, loongarch_macro_opcodes,		0, 0, { 0 }, 0, 0 },
   { &LARCH_opts.ase_ilp32, loongarch_alias_opcodes,		0, 0, { 0 }, 0, 0 },
   { &LARCH_opts.ase_ilp32, loongarch_imm_opcodes,		0, 0, { 0 }, 0, 0 },

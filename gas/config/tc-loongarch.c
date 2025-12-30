@@ -155,6 +155,8 @@ enum options
   OPTION_THIN_ADD_SUB,
   OPTION_IGNORE_START_ALIGN,
 
+  OPTION_GEN_OLD_RELOCS,
+
   OPTION_END_OF_ENUM,
 };
 
@@ -172,6 +174,7 @@ const struct option md_longopts[] =
   { "mno-relax", no_argument, NULL, OPTION_NO_RELAX },
   { "mthin-add-sub", no_argument, NULL, OPTION_THIN_ADD_SUB},
   { "mignore-start-align", no_argument, NULL, OPTION_IGNORE_START_ALIGN},
+  { "mgen-old-relocs", no_argument, NULL, OPTION_GEN_OLD_RELOCS},
 
   { NULL, no_argument, NULL, 0 }
 };
@@ -189,6 +192,11 @@ md_parse_option (int c, const char *arg)
 
   switch (c)
     {
+    case OPTION_GEN_OLD_RELOCS:
+      LARCH_opts.gen_old_reloc = 1;
+      LARCH_opts.relax = 0;
+      break;
+
     case OPTION_ABI:
       if (strncasecmp (arg, "lp64", 4) == 0 && fabi[arg[4] & 0xff] != 0)
 	{
@@ -319,7 +327,18 @@ loongarch_after_parse_args ()
     }
 
   /* Set eflags ABI version to v1 (ELF object file ABI 2.0).  */
-  LARCH_opts.ase_abi |= EF_LOONGARCH_OBJABI_V1;
+  LARCH_opts.ase_abi |= EF_LOONGARCH_OBJABI_V0;
+
+  /* FIXME: Need to delete. For generate old relocs.  */
+  LARCH_opts.gen_old_reloc = 1;
+  LARCH_opts.relax = 0;
+
+  LARCH_opts.old_ilp32 = LARCH_opts.ase_ilp32 && LARCH_opts.gen_old_reloc;
+  LARCH_opts.old_lp64 = LARCH_opts.ase_lp64 && LARCH_opts.gen_old_reloc;
+
+  LARCH_opts.old_labs = LARCH_opts.ase_labs && LARCH_opts.gen_old_reloc;
+  LARCH_opts.old_gpcr = LARCH_opts.ase_gpcr && LARCH_opts.gen_old_reloc;
+  LARCH_opts.old_gabs = LARCH_opts.ase_gabs && LARCH_opts.gen_old_reloc;
 
   /* Init ilp32/lp64 registers names.  */
   size_t i;
@@ -1709,38 +1728,40 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg ATTRIBUTE_UNUSED)
        (use md_number_to_chars (buf, 0, fixP->fx_size)).  */
     case BFD_RELOC_64:
     case BFD_RELOC_32:
-      if (fixP->fx_pcrel)
+      if (!LARCH_opts.gen_old_reloc)
 	{
-	  switch (fixP->fx_r_type)
+	  if (fixP->fx_pcrel)
 	    {
-	    case BFD_RELOC_64:
-	      fixP->fx_r_type = BFD_RELOC_LARCH_64_PCREL;
-	      break;
-	    case BFD_RELOC_32:
+	      switch (fixP->fx_r_type)
+		{
+		case BFD_RELOC_64:
+		  fixP->fx_r_type = BFD_RELOC_LARCH_64_PCREL;
+		  break;
+		case BFD_RELOC_32:
+		  fixP->fx_r_type = BFD_RELOC_LARCH_32_PCREL;
+		  break;
+		default:
+		  break;
+		}
+	    }
+
+	  /* If symbol in .eh_frame the address may be adjusted, and contents of
+	     .eh_frame will be adjusted, so use pc-relative relocation for FDE
+	     initial location.
+	     The Option of mthin-add-sub does not affect the generation of
+	     R_LARCH_32_PCREL relocation in .eh_frame.  */
+	  if (fixP->fx_r_type == BFD_RELOC_32
+	      && fixP->fx_addsy && fixP->fx_subsy
+	      && (sub_segment = S_GET_SEGMENT (fixP->fx_subsy))
+	      && strcmp (sub_segment->name, ".eh_frame") == 0
+	      && S_GET_VALUE (fixP->fx_subsy)
+	      == fixP->fx_frag->fr_address + fixP->fx_where)
+	    {
 	      fixP->fx_r_type = BFD_RELOC_LARCH_32_PCREL;
-	      break;
-	    default:
+	      fixP->fx_subsy = NULL;
 	      break;
 	    }
 	}
-
-      /* If symbol in .eh_frame the address may be adjusted, and contents of
-	 .eh_frame will be adjusted, so use pc-relative relocation for FDE
-	 initial location.
-	 The Option of mthin-add-sub does not affect the generation of
-	 R_LARCH_32_PCREL relocation in .eh_frame.  */
-      if (fixP->fx_r_type == BFD_RELOC_32
-	  && fixP->fx_addsy && fixP->fx_subsy
-	  && (sub_segment = S_GET_SEGMENT (fixP->fx_subsy))
-	  && strcmp (sub_segment->name, ".eh_frame") == 0
-	  && S_GET_VALUE (fixP->fx_subsy)
-	  == fixP->fx_frag->fr_address + fixP->fx_where)
-	{
-	  fixP->fx_r_type = BFD_RELOC_LARCH_32_PCREL;
-	  fixP->fx_subsy = NULL;
-	  break;
-	}
-
       if (fixP->fx_addsy && fixP->fx_subsy)
 	{
 	  fixP->fx_next = xmemdup (fixP, sizeof (*fixP), sizeof (*fixP));

@@ -21,6 +21,7 @@
 #include "loongarch-lex.h"
 #include "loongarch-parse.h"
 #include "bfd/elfxx-loongarch.h"
+#include "opcode/loongarch.h"
 static void yyerror (const char *s ATTRIBUTE_UNUSED)
 {
 };
@@ -131,7 +132,24 @@ reloc (const char *op_c_str, const char *id_c_str, offsetT addend)
 
   /* For compatible old asm code.  */
   if (0 == strcmp (op_c_str, "plt"))
-    btype = BFD_RELOC_LARCH_B26;
+    {
+      if (LARCH_opts.gen_old_reloc)
+	btype = BFD_RELOC_LARCH_SOP_PUSH_PLT_PCREL;
+      else
+	btype = BFD_RELOC_LARCH_B26;
+    }
+  else if (0 == strcmp (op_c_str, "pcrel"))
+    btype = BFD_RELOC_LARCH_SOP_PUSH_PCREL;
+  else if (0 == strcmp (op_c_str, "abs"))
+    btype = BFD_RELOC_LARCH_SOP_PUSH_ABSOLUTE;
+  else if (0 == strcmp (op_c_str, "gprel"))
+    btype = BFD_RELOC_LARCH_SOP_PUSH_GPREL;
+  else if (0 == strcmp (op_c_str, "tprel"))
+    btype = BFD_RELOC_LARCH_SOP_PUSH_TLS_TPREL;
+  else if (0 == strcmp (op_c_str, "tlsgot"))
+    btype = BFD_RELOC_LARCH_SOP_PUSH_TLS_GOT;
+  else if (0 == strcmp (op_c_str, "tlsgd"))
+    btype = BFD_RELOC_LARCH_SOP_PUSH_TLS_GD;
   else
     {
       btype = bfd_elf_loongarch_larch_reloc_name_lookup (NULL, op_c_str);
@@ -238,9 +256,6 @@ emit_bin (int op)
 	  opr1 = (valueT) opr1 << opr2;
 	  break;
 	case RIGHT_OP:
-	  if (opr1 < 0)
-	    as_warn (_("Right shift of negative numbers may be changed "
-		       "from arithmetic right shift to logical right shift!"));
 	  /* Arithmetic right shift.  */
 	  opr1 = opr1 >> opr2;
 	  break;

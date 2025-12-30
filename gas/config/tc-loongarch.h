@@ -112,6 +112,11 @@ extern int loongarch_cie_data_alignment;
 #define DWARF2_CIE_DATA_ALIGNMENT loongarch_cie_data_alignment
 #define DWARF2_DEFAULT_RETURN_COLUMN  1	    /* FDE Return Address Register.  */
 
+/* FIXME: when -mgen-old-relocs disabled, shold not define the macro.  */
+#define CFI_DIFF_EXPR_OK 0
+/* FIXME: old use 8 default.  */
+#define DWARF2_FDE_RELOC_SIZE 8
+
 #define tc_cfi_frame_initial_instructions	\
   loongarch_cfi_frame_initial_instructions
 extern void loongarch_cfi_frame_initial_instructions (void);

@@ -328,6 +328,27 @@ dec2 : [1-9][0-9]?
 #define ase_gpcr	isa.use_la_global_with_pcrel
 #define ase_gabs	isa.use_la_global_with_abs
 
+    struct opt_old_reloc
+    {
+	    int gen_old_reloc;
+
+	    int old_ilp32;
+	    int old_lp64;
+
+	    int old_local_with_abs;
+	    int old_global_with_pcrel;
+	    int old_global_with_abs;
+    } old_reloc;
+
+#define gen_old_reloc	old_reloc.gen_old_reloc
+
+#define old_ilp32	old_reloc.old_ilp32
+#define old_lp64	old_reloc.old_lp64
+
+#define old_labs	old_reloc.old_local_with_abs
+#define old_gpcr	old_reloc.old_global_with_pcrel
+#define old_gabs	old_reloc.old_global_with_abs
+
     int relax;
     int thin_add_sub;
     int ignore_start_align;
