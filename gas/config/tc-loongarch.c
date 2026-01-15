@@ -203,11 +203,13 @@ md_parse_option (int c, const char *arg)
 	  LARCH_opts.ase_ilp32 = 1;
 	  LARCH_opts.ase_lp64 = 1;
 	  LARCH_opts.ase_abi = fabi[arg[4] & 0xff];
+	  LARCH_opts.ase_abi = EF_LOONGARCH_ABI_DOUBLE_FLOAT;
 	}
       else if (strncasecmp (arg, "ilp32", 5) == 0 && fabi[arg[5] & 0xff] != 0)
 	{
 	  LARCH_opts.ase_ilp32 = 1;
 	  LARCH_opts.ase_abi = fabi[arg[5] & 0xff];
+	  LARCH_opts.ase_abi = EF_LOONGARCH_ABI_DOUBLE_FLOAT;
 	}
       else
 	ret = 0;
@@ -324,6 +326,7 @@ loongarch_after_parse_args ()
       else
 	/* To support lonngarch*-elf targets.  */
 	LARCH_opts.ase_abi = EF_LOONGARCH_ABI_DOUBLE_FLOAT;
+      LARCH_opts.ase_abi = EF_LOONGARCH_ABI_DOUBLE_FLOAT;
     }
 
   /* Set eflags ABI version to v1 (ELF object file ABI 2.0).  */
