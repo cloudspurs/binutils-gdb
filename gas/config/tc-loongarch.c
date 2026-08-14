@@ -1644,6 +1644,29 @@ _loongarch_force_relocation_sub_same (segT sec,
   return true;
 }
 
+/* Return true to use DW_LNS_fixed_advance_pc in .debug_line.  */
+bool
+loongarch_fixed_advance_pc (symbolS *from, symbolS *to)
+{
+  segT fromsec = S_GET_SEGMENT (from);
+  segT tosec = S_GET_SEGMENT (to);
+  if (fromsec != tosec)
+    return false;
+  fragS *fromfrag = symbol_get_frag (from);
+  fragS *tofrag = symbol_get_frag (to);
+  return _loongarch_force_relocation_sub_same (fromsec, fromfrag, tofrag);
+}
+
+/* Return true to use DW_LNS_fixed_advance_pc for a rs_dwarf2dbg frag.  */
+bool
+loongarch_fixed_advance_pc_frag (fragS *frag)
+{
+  expressionS *exp = symbol_get_value_expression (frag->fr_symbol);
+
+  if (exp->X_op != O_subtract)
+    return false;
+  return loongarch_fixed_advance_pc (exp->X_op_symbol, exp->X_add_symbol);
+}
 
 /* Postpone text-section label subtraction calculation until linking,
    since linker relaxations might change the deltas.  */
