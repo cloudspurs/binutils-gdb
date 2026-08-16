@@ -1959,35 +1959,21 @@ void
 dwarf2dbg_convert_frag (fragS *frag)
 {
   offsetT addr_diff;
-  bool use_fixed;
+  int saved_finalize_syms = finalize_syms;
 
-  use_fixed = DWARF2_USE_FIXED_ADVANCE_PC_FOR_FRAG (frag);
-
-  if (use_fixed)
-    {
-      /* If linker relaxation is enabled then the distance between the two
-	 symbols in the frag->fr_symbol expression might change.  Hence we
-	 cannot rely upon the value computed by resolve_symbol_value.
-	 Instead we leave the expression unfinalized and allow
-	 emit_fixed_inc_line_addr to create a fixup (which later becomes a
-	 relocation) that will allow the linker to correctly compute the
-	 actual address difference.  We have to use a fixed line advance for
-	 this as we cannot (easily) relocate leb128 encoded values.  */
-      int saved_finalize_syms = finalize_syms;
-
-      finalize_syms = 0;
-      addr_diff = resolve_symbol_value (frag->fr_symbol);
-      finalize_syms = saved_finalize_syms;
-    }
-  else
-    addr_diff = resolve_symbol_value (frag->fr_symbol);
+  /* Resolve without finalizing so that the per-frag decision below can
+     still inspect frag->fr_symbol's operands, and so that
+     emit_fixed_inc_line_addr can create a fixup for the expression.  */
+  finalize_syms = 0;
+  addr_diff = resolve_symbol_value (frag->fr_symbol);
+  finalize_syms = saved_finalize_syms;
 
   /* fr_var carries the max_chars that we created the fragment with.
      fr_subtype carries the current expected length.  We must, of
      course, have allocated enough memory earlier.  */
   gas_assert (frag->fr_var >= (int) frag->fr_subtype);
 
-  if (use_fixed)
+  if (DWARF2_USE_FIXED_ADVANCE_PC_FOR_FRAG (frag))
     emit_fixed_inc_line_addr (frag->fr_offset, addr_diff, frag,
 			      frag->fr_literal + frag->fr_fix,
 			      frag->fr_subtype);
