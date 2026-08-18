@@ -26,12 +26,14 @@ run_dump_test "lns-duplicate"
 # defined a macro...
 if { ![istarget s390*-*-*] } {
     # Use alternate file for targets using DW_LNS_fixed_advance_pc opcodes.
-    if {    [istarget am3*-*-*]
+    if { [istarget loongarch*-*-*] } {
+      run_dump_test "lns-common-1"
+      run_dump_test "lns-big-delta-loongarch"
+    } elseif {    [istarget am3*-*-*]
 	 || [istarget avr*-*-*]
 	 || [istarget cr16-*-*]
 	 || [istarget crx-*-*]
 	 || [istarget ft32*-*]
-	 || [istarget loongarch*-*-*]
 	 || [istarget mn10*-*-*]
 	 || [istarget msp430-*-*]
 	 || [istarget nds32*-*-*]

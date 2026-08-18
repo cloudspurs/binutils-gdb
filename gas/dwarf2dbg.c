@@ -112,7 +112,14 @@
    opcodes and variable-length operands cannot be used.  If this macro is
    nonzero, use the DW_LNS_fixed_advance_pc opcode instead.  */
 #ifndef DWARF2_USE_FIXED_ADVANCE_PC
-# define DWARF2_USE_FIXED_ADVANCE_PC	linkrelax
+# define DWARF2_USE_FIXED_ADVANCE_PC(FROM, TO)	linkrelax
+#endif
+
+/* Targets that need a per-frag decision override this macro.  The default
+   path only needs the target's global fixed-advance-pc setting.  */
+#ifndef DWARF2_USE_FIXED_ADVANCE_PC_FOR_FRAG
+# define DWARF2_USE_FIXED_ADVANCE_PC_FOR_FRAG(FRAG) \
+  DWARF2_USE_FIXED_ADVANCE_PC (0, 0)
 #endif
 
 /* First special line opcode - leave room for the standard opcodes.
@@ -1898,7 +1905,7 @@ relax_inc_line_addr (int line_delta, symbolS *to_sym, symbolS *from_sym)
 
   /* The maximum size of the frag is the line delta with a maximum
      sized address delta.  */
-  if (DWARF2_USE_FIXED_ADVANCE_PC)
+  if (DWARF2_USE_FIXED_ADVANCE_PC (from_sym, to_sym))
     max_chars = size_fixed_inc_line_addr (line_delta,
 					  -DWARF2_LINE_MIN_INSN_LENGTH);
   else
@@ -1919,7 +1926,7 @@ dwarf2dbg_estimate_size_before_relax (fragS *frag)
   int size;
 
   addr_delta = resolve_symbol_value (frag->fr_symbol);
-  if (DWARF2_USE_FIXED_ADVANCE_PC)
+  if (DWARF2_USE_FIXED_ADVANCE_PC_FOR_FRAG (frag))
     size = size_fixed_inc_line_addr (frag->fr_offset, addr_delta);
   else
     size = size_inc_line_addr (frag->fr_offset, addr_delta);
@@ -1952,32 +1959,21 @@ void
 dwarf2dbg_convert_frag (fragS *frag)
 {
   offsetT addr_diff;
+  int saved_finalize_syms = finalize_syms;
 
-  if (DWARF2_USE_FIXED_ADVANCE_PC)
-    {
-      /* If linker relaxation is enabled then the distance between the two
-	 symbols in the frag->fr_symbol expression might change.  Hence we
-	 cannot rely upon the value computed by resolve_symbol_value.
-	 Instead we leave the expression unfinalized and allow
-	 emit_fixed_inc_line_addr to create a fixup (which later becomes a
-	 relocation) that will allow the linker to correctly compute the
-	 actual address difference.  We have to use a fixed line advance for
-	 this as we cannot (easily) relocate leb128 encoded values.  */
-      int saved_finalize_syms = finalize_syms;
-
-      finalize_syms = 0;
-      addr_diff = resolve_symbol_value (frag->fr_symbol);
-      finalize_syms = saved_finalize_syms;
-    }
-  else
-    addr_diff = resolve_symbol_value (frag->fr_symbol);
+  /* Resolve without finalizing so that the per-frag decision below can
+     still inspect frag->fr_symbol's operands, and so that
+     emit_fixed_inc_line_addr can create a fixup for the expression.  */
+  finalize_syms = 0;
+  addr_diff = resolve_symbol_value (frag->fr_symbol);
+  finalize_syms = saved_finalize_syms;
 
   /* fr_var carries the max_chars that we created the fragment with.
      fr_subtype carries the current expected length.  We must, of
      course, have allocated enough memory earlier.  */
   gas_assert (frag->fr_var >= (int) frag->fr_subtype);
 
-  if (DWARF2_USE_FIXED_ADVANCE_PC)
+  if (DWARF2_USE_FIXED_ADVANCE_PC_FOR_FRAG (frag))
     emit_fixed_inc_line_addr (frag->fr_offset, addr_diff, frag,
 			      frag->fr_literal + frag->fr_fix,
 			      frag->fr_subtype);
@@ -2110,7 +2106,8 @@ process_entries (segT seg, struct line_entry *e)
 	  out_set_addr (lab);
 	  out_inc_line_addr (line_delta, 0);
 	}
-      else if (frag == last_frag && ! DWARF2_USE_FIXED_ADVANCE_PC)
+      else if (frag == last_frag
+	       && ! DWARF2_USE_FIXED_ADVANCE_PC (last_lab, lab))
 	out_inc_line_addr (line_delta, frag_ofs - last_frag_ofs);
       else
 	relax_inc_line_addr (line_delta, lab, last_lab);
@@ -2127,13 +2124,12 @@ process_entries (segT seg, struct line_entry *e)
   /* Emit a DW_LNE_end_sequence for the end of the section.  */
   frag = last_frag_for_seg (seg);
   frag_ofs = get_frag_fix (frag, seg);
-  if (frag == last_frag && ! DWARF2_USE_FIXED_ADVANCE_PC)
+  lab = symbol_temp_new (seg, frag, frag_ofs);
+  if (frag == last_frag
+      && ! DWARF2_USE_FIXED_ADVANCE_PC (last_lab, lab))
     out_inc_line_addr (INT_MAX, frag_ofs - last_frag_ofs);
   else
-    {
-      lab = symbol_temp_new (seg, frag, frag_ofs);
-      relax_inc_line_addr (INT_MAX, lab, last_lab);
-    }
+    relax_inc_line_addr (INT_MAX, lab, last_lab);
 }
 
 /* Switch to LINE_STR_SEG and output the given STR.  Return the
