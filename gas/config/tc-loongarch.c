@@ -2093,10 +2093,138 @@ tc_loongarch_parse_to_dw2regnum (expressionS *exp)
 }
 
 
+/* Return the fixed size of FRAG in the unrelaxed layout.  */
+static offsetT
+loongarch_frag_size (const fragS *frag)
+{
+  switch (frag->fr_type)
+    {
+    case rs_fill:
+      return frag->fr_fix + frag->fr_offset * frag->fr_var;
+    case rs_machine_dependent:
+      return frag->fr_fix + frag->fr_var;
+    case rs_align_code:
+      /* Alignments converted by loongarch_resolve_align_before_relax keep
+	 the worst-case NOP count until relaxation.  */
+      if (frag->tc_frag_data.is_align)
+	return ((offsetT) 1 << frag->fr_offset) - 4;
+      return frag->fr_fix;
+    default:
+      return frag->fr_fix;
+    }
+}
+
+/* Return the offset of TARGET in FRCH, if it belongs to this chain.  */
+static bool
+loongarch_frag_start_offset (frchainS *frch, const fragS *target,
+			     offsetT *offset)
+{
+  const fragS *frag;
+
+  *offset = 0;
+  for (frag = frch->frch_root; frag != NULL; frag = frag->fr_next)
+    {
+      if (frag == target)
+	return true;
+      *offset += loongarch_frag_size (frag);
+    }
+  return false;
+}
+
+/* Return true if a .reloc R_LARCH_RELAX entry points at or before
+   ALIGN_FRAG.  */
+static bool
+loongarch_reloc_list_has_relax_before (segT sec, frchainS *frch,
+				       fragS *align_frag)
+{
+  struct reloc_list *r;
+  offsetT align_offset;
+
+  if (!loongarch_frag_start_offset (frch, align_frag, &align_offset))
+    return true;
+
+  for (r = reloc_list; r != NULL; r = r->next)
+    if (r->u.a.howto != NULL
+	&& r->u.a.howto == bfd_reloc_type_lookup (stdoutput,
+						  BFD_RELOC_LARCH_RELAX))
+      {
+	symbolS *sym = r->u.a.offset_sym;
+	expressionS *symval;
+	offsetT offset = 0;
+
+	if (sym == NULL)
+	  continue;
+
+	symval = symbol_get_value_expression (sym);
+	if (symval->X_op == O_symbol)
+	  {
+	    offset = symval->X_add_number;
+	    sym = symval->X_add_symbol;
+	    symval = symbol_get_value_expression (sym);
+	  }
+	else if (symval->X_op != O_constant)
+	  return true;
+
+	if (sym == NULL || symval->X_op != O_constant)
+	  return true;
+	if (S_GET_SEGMENT (sym) != sec)
+	  continue;
+
+	offset += (offsetT) S_GET_VALUE (sym);
+	if (!symbol_section_p (sym))
+	  {
+	    offsetT frag_offset;
+
+	    if (!loongarch_frag_start_offset (frch, symbol_get_frag (sym),
+					      &frag_offset))
+	      return true;
+	    offset += frag_offset;
+	  }
+
+	if (offset <= align_offset)
+	  return true;
+      }
+
+  return false;
+}
+
+/* Convert an alignment frag before the first linker-relaxable instruction
+   into an ordinary rs_align_code frag.  GAS will compute the exact NOP
+   count from the final addresses, so the R_LARCH_ALIGN fixup is removed.  */
+static void
+loongarch_resolve_align_before_relax (frchainS *frch, fragS *frag)
+{
+  if (frag->fr_type == rs_fill)
+    {
+      fixS **fixpp = &frch->fix_root;
+
+      while (*fixpp != NULL)
+	{
+	  fixS *fixp = *fixpp;
+
+	  if (fixp->fx_frag == frag
+	      && fixp->fx_r_type == BFD_RELOC_LARCH_ALIGN)
+	    {
+	      *fixpp = fixp->fx_next;
+	      continue;
+	    }
+	  fixpp = &fixp->fx_next;
+	}
+    }
+
+  frag->fr_type = rs_align_code;
+  frag->fr_fix = 0;
+  frag->fr_var = 1;
+  frag->fr_offset = frag->tc_frag_data.align_power;
+  frag->fr_subtype = frag->tc_frag_data.align_max;
+  frag->fr_symbol = NULL;
+  frag->tc_frag_data.linker_relax = false;
+}
+
 void
 loongarch_pre_output_hook (void)
 {
-  const frchainS *frch;
+  frchainS *frch;
   segT s;
 
   if (!LARCH_opts.relax)
@@ -2107,34 +2235,47 @@ loongarch_pre_output_hook (void)
   subsegT subseg = now_subseg;
 
   for (s = stdoutput->sections; s; s = s->next)
-    for (frch = seg_info (s)->frchainP; frch; frch = frch->frch_next)
-      {
-	fragS *frag;
+    {
+      bool seen_relax = false;
 
-	for (frag = frch->frch_root; frag; frag = frag->fr_next)
-	  {
-	    if (frag->fr_type == rs_cfa)
-	      {
-		expressionS exp;
-		expressionS *symval;
+      for (frch = seg_info (s)->frchainP; frch; frch = frch->frch_next)
+	{
+	  fragS *frag;
 
-		symval = symbol_get_value_expression (frag->fr_symbol);
-		exp.X_op = O_subtract;
-		exp.X_add_symbol = symval->X_add_symbol;
-		exp.X_add_number = 0;
-		exp.X_op_symbol = symval->X_op_symbol;
+	  for (frag = frch->frch_root; frag; frag = frag->fr_next)
+	    {
+	      if (frag->tc_frag_data.is_align)
+		{
+		  if (!seen_relax
+		      && !loongarch_reloc_list_has_relax_before (s, frch, frag))
+		    loongarch_resolve_align_before_relax (frch, frag);
+		}
+	      else if (frag->tc_frag_data.linker_relax)
+		seen_relax = true;
 
-		/* We must set the segment before creating a frag after all
-		   frag chains have been chained together.  */
-		subseg_set (s, frch->frch_subseg);
+	      if (frag->fr_type == rs_cfa)
+		{
+		  expressionS exp;
+		  expressionS *symval;
 
-		/* Set the size to 1 temporary.  The size may change in
-		   relax_segment. Update to the real size in md_apply_fix.  */
-		fix_new_exp (frag, (int) frag->fr_offset, 1, &exp, 0,
-			     BFD_RELOC_LARCH_CFA);
-	      }
-	  }
-      }
+		  symval = symbol_get_value_expression (frag->fr_symbol);
+		  exp.X_op = O_subtract;
+		  exp.X_add_symbol = symval->X_add_symbol;
+		  exp.X_add_number = 0;
+		  exp.X_op_symbol = symval->X_op_symbol;
+
+		  /* We must set the segment before creating a frag after all
+		     frag chains have been chained together.  */
+		  subseg_set (s, frch->frch_subseg);
+
+		  /* Set the size to 1 temporary.  The size may change in
+		     relax_segment. Update to the real size in md_apply_fix.  */
+		  fix_new_exp (frag, (int) frag->fr_offset, 1, &exp, 0,
+			       BFD_RELOC_LARCH_CFA);
+		}
+	    }
+	}
+    }
 
   /* Restore the original segment info.  */
   subseg_set (seg, subseg);
@@ -2180,11 +2321,9 @@ loongarch_frag_align_code (int n, int max)
   if (!LARCH_opts.relax)
     return false;
 
-  /* Only create an alignment frag if the current section already
-     has relaxed instructions.  */
-  if (!now_seg->sec_flg1)
-    return false;
-
+  /* Always create a worst-case alignment frag.  Alignments before the
+     first linker-relaxable instruction are later resolved in
+     loongarch_pre_output_hook with the exact NOP count.  */
   bfd_vma align_bytes = (bfd_vma) 1 << n;
   bfd_vma worst_case_bytes = align_bytes - 4;
   bfd_vma addend = worst_case_bytes;
@@ -2199,9 +2338,6 @@ loongarch_frag_align_code (int n, int max)
   frag_wane (frag_now);
   frag_new (0);
 
-  /* Mark the current frag as linker relaxable.  */
-  frag_now->tc_frag_data.linker_relax = true;
-
   /* If max <= 0, ignore max.
      If max >= worst_case_bytes, max has no effect.
      Similar to gas/write.c relax_segment function rs_align_code case:
@@ -2214,9 +2350,11 @@ loongarch_frag_align_code (int n, int max)
       addend = ALIGN_MAX_ADDEND (n, max);
     }
 
+  fragS *align_frag = NULL;
   if (LARCH_opts.ignore_start_align)
     {
       frag_grow (worst_case_bytes);
+      align_frag = frag_now;
       /* Use relaxable frag for .align.
 	 If .align at the start of section, do nothing. Section alignment can
 	 ensure correct alignment.
@@ -2228,6 +2366,7 @@ loongarch_frag_align_code (int n, int max)
   else
     {
       nops = frag_more (worst_case_bytes);
+      align_frag = frag_now;
       if (align_max)
 	{
 	  ex.X_add_symbol = s;
@@ -2241,6 +2380,12 @@ loongarch_frag_align_code (int n, int max)
       fix_new_exp (frag_now, nops - frag_now->fr_literal, 0,
 		   &ex, false, BFD_RELOC_LARCH_ALIGN);
     }
+
+  /* Record alignment info for loongarch_pre_output_hook.  */
+  align_frag->tc_frag_data.linker_relax = true;
+  align_frag->tc_frag_data.is_align = true;
+  align_frag->tc_frag_data.align_power = n;
+  align_frag->tc_frag_data.align_max = max;
 
   /* Default write NOP for aligned bytes.  */
   loongarch_make_nops (nops, worst_case_bytes);

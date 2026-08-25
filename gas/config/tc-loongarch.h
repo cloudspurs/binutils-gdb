@@ -154,9 +154,17 @@ extern void loongarch_md_finish (void);
 struct loongarch_frag_type
 {
   bool linker_relax;
+  bool is_align;
+  unsigned int align_power;
+  unsigned int align_max;
 };
 
 #define TC_FRAG_INIT(FRAGP, MAX_BYTES) \
-  do { (FRAGP)->tc_frag_data.linker_relax = false; } while (0)
+  do { \
+    (FRAGP)->tc_frag_data.linker_relax = false; \
+    (FRAGP)->tc_frag_data.is_align = false; \
+    (FRAGP)->tc_frag_data.align_power = 0; \
+    (FRAGP)->tc_frag_data.align_max = 0; \
+  } while (0)
 
 #endif
