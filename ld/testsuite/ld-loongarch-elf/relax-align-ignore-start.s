@@ -1,6 +1,5 @@
-# If .align at the start of a section, do not add NOP instructions
-# and do not emit R_LARCH_ALIGN relocations.
-# Section alignment can ensure correct alignment.
+# No relaxed instruction precedes these .align directives, so GAS can
+# resolve them without R_LARCH_ALIGN relocations.
 .section "aaa", "ax"
 ret
 
