@@ -2334,13 +2334,114 @@ loongarch_insert_uleb128_fixes (bfd *abfd ATTRIBUTE_UNUSED,
     }
 }
 
+/* Return the fixed size of FRAG in the unrelaxed layout.  */
+static offsetT
+loongarch_frag_size (const fragS *frag)
+{
+  switch (frag->fr_type)
+    {
+    case rs_fill:
+      return frag->fr_fix + frag->fr_offset * frag->fr_var;
+    case rs_machine_dependent:
+      return frag->fr_fix + frag->fr_var;
+    case rs_align_code:
+      return ((offsetT) 1 << frag->fr_offset) - 4;
+    default:
+      return frag->fr_fix;
+    }
+}
+
+/* Return the frag containing OFFSET in SEC, or the last frag if OFFSET is
+   at the end of the section.  */
+static fragS *
+loongarch_frag_at_offset (segT sec, offsetT offset)
+{
+  segment_info_type *seginfo = seg_info (sec);
+
+  if (seginfo == NULL || offset < 0
+      || (sec->flags & SEC_CODE) == 0)
+    return NULL;
+
+  fragS *last = NULL;
+  offsetT base = 0;
+
+  for (frchainS *frch = seginfo->frchainP;
+       frch != NULL; frch = frch->frch_next)
+    {
+      fragS *frag = frch->frch_root;
+      offsetT frag_offset = 0;
+
+      for (; frag != NULL; frag = frag->fr_next)
+	{
+	  offsetT size = loongarch_frag_size (frag);
+
+	  if (size > 0 && offset < base + frag_offset + size)
+	    return frag;
+	  frag_offset += size;
+	  last = frag;
+	}
+      base += frag_offset;
+    }
+  return last;
+}
+
+/* Mark frags targeted by R_LARCH_RELAX relocations before relocation
+   processing.  */
+static void
+loongarch_mark_relax_reloc_frags (void)
+{
+  for (struct reloc_list *r = reloc_list; r != NULL; r = r->next)
+    {
+      if (r->u.a.howto == NULL
+	  || r->u.a.howto != bfd_reloc_type_lookup (stdoutput,
+						    BFD_RELOC_LARCH_RELAX))
+	continue;
+
+      if (r->u.a.offset_sym == NULL)
+	continue;
+
+      resolve_symbol_value (r->u.a.offset_sym);
+      expressionS *symval = symbol_get_value_expression (r->u.a.offset_sym);
+      symbolS *sym = NULL;
+      offsetT offset = 0;
+
+      if (symval->X_op == O_constant)
+	sym = r->u.a.offset_sym;
+      else if (symval->X_op == O_symbol)
+	{
+	  sym = symval->X_add_symbol;
+	  offset = symval->X_add_number;
+	  symval = symbol_get_value_expression (sym);
+	}
+
+      segT sec;
+      if (sym == NULL || symval->X_op != O_constant
+	  || (sec = S_GET_SEGMENT (sym)) == NULL
+	  || !SEG_NORMAL (sec)
+	  || (sec->flags & SEC_CODE) == 0)
+	continue;
+
+      offset += (offsetT) S_GET_VALUE (sym);
+      fragS *frag = loongarch_frag_at_offset (sec, offset);
+      if (frag == NULL)
+	continue;
+
+      sec->sec_flg1 = true;
+      frag->tc_frag_data.linker_relax = true;
+    }
+}
+
 void
 loongarch_md_finish (void)
 {
-  /* Insert relocations for uleb128 directives, so the values can be recomputed
-     at link time.  */
   if (LARCH_opts.relax)
-    bfd_map_over_sections (stdoutput, loongarch_insert_uleb128_fixes, NULL);
+    {
+      loongarch_mark_relax_reloc_frags ();
+
+      /* Insert relocations for uleb128 directives, so the values can be
+	 recomputed at link time.  */
+      bfd_map_over_sections (stdoutput, loongarch_insert_uleb128_fixes, NULL);
+    }
 }
 
 void
