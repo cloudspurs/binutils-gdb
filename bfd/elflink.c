@@ -12102,7 +12102,85 @@ elf_link_input_bfd (struct elf_final_link_info *flinfo, bfd *input_bfd)
 		  *rel_hash = NULL;
 		  sym = isymbuf[r_symndx];
 		  sec = flinfo->sections[r_symndx];
-		  if (ELF_ST_TYPE (sym.st_info) == STT_SECTION)
+		  /* In a relocatable RELA link, optionally replace references
+		     to an input section symbol with a local STT_NOTYPE anchor.
+		     Keeping the section offset in the anchor's st_value avoids
+		     folding it into the relocation addend, so a later link can
+		     move the input section without rewriting the addend.  */
+		  if (bed->replace_local_section_symbols
+		      && bfd_link_relocatable (flinfo->info)
+		      && bed->rela_normal
+		      && ELF_ST_TYPE (sym.st_info) == STT_SECTION
+		      && sec != NULL
+		      && sec->owner != NULL
+		      && !bfd_is_abs_section (sec)
+		      && sec->output_section != NULL
+		      && !bfd_is_abs_section (sec->output_section)
+		      && sec->sec_info_type != SEC_INFO_TYPE_MERGE)
+		    {
+		      /* Emit one anchor per input section symbol.  indices[]
+			 stores its output index; -1 means it is not emitted.  */
+		      if (flinfo->indices[r_symndx] == -1)
+			{
+			  /* State used to create the synthetic local symbol.  */
+			  unsigned long shlink;
+			  const char *name;
+			  asection *osec;
+			  long indx;
+
+			  if (flinfo->info->strip == strip_all)
+			    {
+			      /* You can't do ld -r -s.  */
+			      bfd_set_error (bfd_error_invalid_operation);
+			      return false;
+			    }
+
+			  /* Reuse the original symbol name when present; otherwise
+			     use the input section name for diagnostics and dumps.  */
+			  shlink = symtab_hdr->sh_link;
+			  name = bfd_elf_string_from_elf_section (input_bfd,
+								  shlink,
+								  sym.st_name);
+			  if (name == NULL)
+			    return false;
+			  /* STT_SECTION symbols normally have an empty name.  */
+			  if (*name == '\0')
+			    name = sec->name;
+
+			  /* The anchor belongs to the output section containing
+			     the input section.  Preserve its local binding, use
+			     STT_NOTYPE, and encode the input section's output
+			     offset in st_value so the addend stays unchanged.  */
+			  osec = sec->output_section;
+			  sym.st_info = ELF_ST_INFO (ELF_ST_BIND (sym.st_info),
+						     STT_NOTYPE);
+			  sym.st_shndx
+			    = _bfd_elf_section_from_bfd_section (output_bfd,
+								 osec);
+			  if (sym.st_shndx == SHN_BAD)
+			    return false;
+
+			  sym.st_value += sec->output_offset;
+
+			  /* Capture the output index before emitting the anchor.
+			     A one return means success; zero is an output failure
+			     and any other value means the backend suppressed it.  */
+			  indx = bfd_get_symcount (output_bfd);
+			  ret = elf_link_output_symstrtab (flinfo, name, &sym,
+							   sec, NULL);
+			  if (ret == 0)
+			    return false;
+			  else if (ret == 1)
+			    flinfo->indices[r_symndx] = indx;
+			  else
+			    abort ();
+			}
+
+		      /* Use the cached local anchor instead of the output
+			 section symbol.  */
+		      r_symndx = flinfo->indices[r_symndx];
+		    }
+		  else if (ELF_ST_TYPE (sym.st_info) == STT_SECTION)
 		    {
 		      /* I suppose the backend ought to fill in the
 			 section of any STT_SECTION symbol against a

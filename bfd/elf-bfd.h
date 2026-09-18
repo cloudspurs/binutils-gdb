@@ -1785,6 +1785,11 @@ struct elf_backend_data
      backend relocate_section routine for relocatable linking.  */
   unsigned rela_normal : 1;
 
+  /* True if ld -r should replace references to local STT_SECTION symbols
+     with local STT_NOTYPE anchors.  The anchor's st_value carries the input
+     section's output offset, so the relocation addend can remain unchanged.  */
+  unsigned replace_local_section_symbols : 1;
+
   /* Set if DT_REL/DT_RELA/DT_RELSZ/DT_RELASZ should not include PLT
      relocations.  */
   unsigned dtrel_excludes_plt : 1;

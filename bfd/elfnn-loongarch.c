@@ -214,6 +214,11 @@ loongarch_elf_new_section_hook (bfd *abfd, asection *sec)
 
 #define elf_backend_want_dynrelro 1
 #define elf_backend_rela_normal 1
+
+/* LoongArch RELA links keep section offsets in relocation addends.  Enable
+   the generic ld -r replacement so a later link can update a section anchor
+   without rewriting those addends.  */
+#define ELF_LINK_REPLACE_SECTION_SYMBOL 1
 #define elf_backend_default_execstack 0
 
 #define IS_LOONGARCH_TLS_TRANS_RELOC(R_TYPE)  \

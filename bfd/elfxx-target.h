@@ -740,6 +740,18 @@
 #define elf_backend_rela_normal 0
 #endif
 
+/* Allow a target backend to opt in before this template is included.  The
+   default keeps the traditional STT_SECTION output behavior.  */
+#ifndef ELF_LINK_REPLACE_SECTION_SYMBOL
+#define ELF_LINK_REPLACE_SECTION_SYMBOL 0
+#endif
+
+/* Map the target-facing option to the internal elf_backend_data field.  */
+#ifndef elf_backend_replace_local_section_symbols
+#define elf_backend_replace_local_section_symbols \
+  ELF_LINK_REPLACE_SECTION_SYMBOL
+#endif
+
 #ifndef elf_backend_dtrel_excludes_plt
 #define elf_backend_dtrel_excludes_plt 0
 #endif
@@ -997,6 +1009,8 @@ static const struct elf_backend_data elfNN_bed =
   elf_backend_default_use_rela_p,
   elf_backend_rela_plts_and_copies_p,
   elf_backend_rela_normal,
+  /* True when ld -r should create local section anchors for this target.  */
+  elf_backend_replace_local_section_symbols,
   elf_backend_dtrel_excludes_plt,
   elf_backend_sign_extend_vma,
   elf_backend_want_got_plt,
