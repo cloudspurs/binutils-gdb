@@ -12123,8 +12123,11 @@ elf_link_input_bfd (struct elf_final_link_info *flinfo, bfd *input_bfd)
 		      if (flinfo->indices[r_symndx] == -1)
 			{
 			  /* State used to create the synthetic local symbol.  */
-			  unsigned long shlink;
 			  const char *name;
+			  const char *ifile;
+			  const char *ifile_base;
+			  size_t name_len;
+			  char *anchor_name;
 			  asection *osec;
 			  long indx;
 
@@ -12135,17 +12138,21 @@ elf_link_input_bfd (struct elf_final_link_info *flinfo, bfd *input_bfd)
 			      return false;
 			    }
 
-			  /* Reuse the original symbol name when present; otherwise
-			     use the input section name for diagnostics and dumps.  */
-			  shlink = symtab_hdr->sh_link;
-			  name = bfd_elf_string_from_elf_section (input_bfd,
-								  shlink,
-								  sym.st_name);
-			  if (name == NULL)
+			  /* Name anchors after their input section and input BFD for
+			     diagnostics.  Relocations use symbol indices, so this
+			     name does not need to be unique.  */
+			  ifile = bfd_get_filename (input_bfd);
+			  if (ifile == NULL || *ifile == '\0')
+			    ifile_base = "<unknown>";
+			  else
+			    ifile_base = lbasename (ifile);
+
+			  name_len = strlen (sec->name) + strlen (ifile_base) + 2;
+			  anchor_name = bfd_alloc (output_bfd, name_len);
+			  if (anchor_name == NULL)
 			    return false;
-			  /* STT_SECTION symbols normally have an empty name.  */
-			  if (*name == '\0')
-			    name = sec->name;
+			  sprintf (anchor_name, "%s@%s", sec->name, ifile_base);
+			  name = anchor_name;
 
 			  /* The anchor belongs to the output section containing
 			     the input section.  Preserve its local binding, use
