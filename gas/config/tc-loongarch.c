@@ -1597,9 +1597,9 @@ _loongarch_force_relocation_sub_same (segT sec,
 				      fragS *addfrag,
 				      fragS *subfrag)
 {
-  if (!LARCH_opts.relax)
-    return false;
-
+  /* Even when .option norelax disables relaxation for this instruction,
+     an earlier linker-relaxable fragment can still change the distance
+     to a local symbol.  The checks below detect such fragments.  */
   /* Not emit relocation if section has no relaxable frag.  */
   if (!sec->sec_flg1)
     return false;
