@@ -22,6 +22,8 @@
 #include "as.h"
 #include "subsegs.h"
 #include "dw2gencfi.h"
+#include "sframe.h"
+#include "gen-sframe.h"
 #include "loongarch-lex.h"
 #include "elf/loongarch.h"
 #include "opcode/loongarch.h"
@@ -2116,8 +2118,32 @@ tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS *fixp)
 void
 loongarch_cfi_frame_initial_instructions (void)
 {
-  cfi_add_CFA_def_cfa_register (3 /* $sp */);
+  cfi_add_CFA_def_cfa (3 /* $sp */, 0);
 }
+
+#ifdef OBJ_ELF
+/* Whether SFrame stack trace information is supported.  */
+bool
+loongarch_support_sframe_p (void)
+{
+  return true;
+}
+
+/* The fixed offset from CFA for SFrame to recover the return address.
+   (useful only when SFrame RA tracking is not needed).  */
+offsetT
+loongarch_sframe_cfa_ra_offset (void)
+{
+  return (offsetT) SFRAME_CFA_FIXED_RA_INVALID;
+}
+
+/* Get the ABI/arch identifier for SFrame.  */
+unsigned char
+loongarch_sframe_get_abi_arch (void)
+{
+  return SFRAME_ABI_LOONGARCH_ENDIAN_LITTLE;
+}
+#endif
 
 /* Convert REGNAME to a DWARF register number.  */
 int

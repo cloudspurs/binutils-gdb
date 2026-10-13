@@ -52,6 +52,7 @@ typedef struct
    stack pointer and frame pointer.  */
 SFRAME_ABI_REG_MAP (amd64, SFRAME_SP (7), SFRAME_FP (6));
 SFRAME_ABI_REG_MAP (aarch64, SFRAME_SP (31), SFRAME_FP (29));
+SFRAME_ABI_REG_MAP (loongarch, SFRAME_SP (3), SFRAME_FP (22));
 SFRAME_ABI_REG_MAP (s390x, SFRAME_SP (15), SFRAME_FP (11));
 
 static const char *
@@ -69,6 +70,9 @@ sframe_get_reg_name (uint8_t abi_arch, unsigned int reg_num, char *buf,
 	break;
       case SFRAME_ABI_AMD64_ENDIAN_LITTLE:
 	abi_reg_map = &amd64_sframe_abi_reg_map;
+	break;
+      case SFRAME_ABI_LOONGARCH_ENDIAN_LITTLE:
+	abi_reg_map = &loongarch_sframe_abi_reg_map;
 	break;
       case SFRAME_ABI_S390X_ENDIAN_BIG:
 	abi_reg_map = &s390x_sframe_abi_reg_map;

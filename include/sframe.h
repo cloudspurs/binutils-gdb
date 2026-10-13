@@ -110,6 +110,7 @@ extern "C"
 #define SFRAME_ABI_AARCH64_ENDIAN_LITTLE   2 /* AARCH64 little endian.  */
 #define SFRAME_ABI_AMD64_ENDIAN_LITTLE     3 /* AMD64 little endian.  */
 #define SFRAME_ABI_S390X_ENDIAN_BIG        4 /* s390x big endian.  */
+#define SFRAME_ABI_LOONGARCH_ENDIAN_LITTLE 5 /* LoongArch little endian.  */
 
 /* SFrame FRE types.  */
 #define SFRAME_FRE_TYPE_ADDR1	0
