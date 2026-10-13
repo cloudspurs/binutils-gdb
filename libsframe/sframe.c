@@ -262,6 +262,7 @@ need_swapping (int endian)
     {
       case SFRAME_ABI_AARCH64_ENDIAN_LITTLE:
       case SFRAME_ABI_AMD64_ENDIAN_LITTLE:
+      case SFRAME_ABI_LOONGARCH_ENDIAN_LITTLE:
 	return !is_little;
       case SFRAME_ABI_AARCH64_ENDIAN_BIG:
       case SFRAME_ABI_S390X_ENDIAN_BIG:

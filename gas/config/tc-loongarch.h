@@ -119,6 +119,40 @@ extern int loongarch_cie_data_alignment;
   loongarch_cfi_frame_initial_instructions
 extern void loongarch_cfi_frame_initial_instructions (void);
 
+#ifdef OBJ_ELF
+/* Whether SFrame stack trace information is supported.  */
+extern bool loongarch_support_sframe_p (void);
+#define support_sframe_p loongarch_support_sframe_p
+
+/* LoongArch relaxation can change FRE start addresses, so keep the 32-bit
+   representation and its relocations.  */
+#define SFRAME_FRE_TYPE_SELECTION_OPT 0
+
+/* LoongArch stack pointer DWARF register number for SFrame CFA tracking.  */
+#define SFRAME_CFA_SP_REG 3
+
+/* LoongArch frame pointer DWARF register number for SFrame CFA and FP
+   tracking.  */
+#define SFRAME_CFA_FP_REG 22
+
+/* LoongArch return address DWARF register number for SFrame RA tracking.  */
+#define SFRAME_CFA_RA_REG 1
+
+/* Whether SFrame return address tracking is needed.  */
+#define sframe_ra_tracking_p() true
+
+/* The fixed offset from CFA for SFrame to recover the return address.  */
+extern offsetT loongarch_sframe_cfa_ra_offset (void);
+#define sframe_cfa_ra_offset loongarch_sframe_cfa_ra_offset
+
+/* The ABI/arch identifier for SFrame.  */
+unsigned char loongarch_sframe_get_abi_arch (void);
+#define sframe_get_abi_arch loongarch_sframe_get_abi_arch
+
+/* Whether SFrame FDE of type SFRAME_FDE_TYPE_FLEX is generated.  */
+#define sframe_support_flex_fde_p() false
+#endif
+
 #define tc_parse_to_dw2regnum tc_loongarch_parse_to_dw2regnum
 extern void tc_loongarch_parse_to_dw2regnum (expressionS *);
 

@@ -500,7 +500,7 @@ Putting it all together:
 
 SFrame header identifies the ABI/arch of the target system for which the
 executable and hence, the stack trace information contained in the SFrame
-section, is intended.  There are currently four identifiable ABI/arch values
+section, is intended.  There are currently five identifiable ABI/arch values
 in the format.
 
 @multitable {SFRAME_ABI_AARCH64_ENDIAN_LITTLE} {Value} {@code{AArch64 little-endian}}
@@ -521,6 +521,10 @@ in the format.
 @tindex SFRAME_ABI_S390X_ENDIAN_BIG
 @item @code{SFRAME_ABI_S390X_ENDIAN_BIG}
 @tab 4 @tab s390x big-endian
+
+@tindex SFRAME_ABI_LOONGARCH_ENDIAN_LITTLE
+@item @code{SFRAME_ABI_LOONGARCH_ENDIAN_LITTLE}
+@tab 5 @tab LoongArch little-endian
 
 @end multitable
 
