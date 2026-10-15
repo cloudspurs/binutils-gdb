@@ -54,6 +54,7 @@ if [istarget "loongarch64-*-*"] {
     run_dump_test "relax-sym-size-1"
     run_dump_test "relax-sym-size-2"
     run_dump_test "check_got_relax"
+    run_dump_test "sframe-multi-fde"
 
     # Tidy up, to not leave huge intermediate files.
     remote_file host delete tmpdir/relax-medium-call.o

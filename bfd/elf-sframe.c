@@ -122,35 +122,64 @@ sframe_decoder_init_func_bfdinfo (bfd *abfd,
   if ((sec->flags & SEC_LINKER_CREATED) && cookie->rels == NULL)
     return true;
 
-  rel = cookie->rels;
-  unsigned int reloc_index = 0;
+  /* Record the relocation, size, and FRE information for each function.  */
   for (i = 0; i < fde_count; i++)
     {
-      /* Bookkeep the relocation offset and relocation index of each function
-	 for later use.  There may be some R_*_NONE relocations intermingled
-	 (see PR ld/33401).  Skip over those.  */
-      while (rel->r_info == 0)
+      uint32_t fde_offset
+	= sframe_decoder_get_offsetof_fde_start_addr (sfd_info->sfd_ctx, i,
+						       NULL);
+      unsigned int reloc_index = 0;
+      uint32_t size_offset
+	= fde_offset + offsetof (sframe_func_desc_idx_v3, sfdi_func_size);
+      bool start_found = false;
+      bool size_found = false;
+
+      /* Record the function start address and size relocations in one
+	 traversal.  */
+      for (rel = cookie->rels; rel < cookie->relend; rel++, reloc_index++)
 	{
-	  reloc_index++;
-	  rel++;
+	  if (rel->r_info == 0)
+	    continue;
+
+	  if (!start_found && rel->r_offset == fde_offset)
+	    {
+	      sframe_decoder_set_func_r_offset (sfd_info, i,
+						rel->r_offset);
+	      sframe_decoder_set_func_reloc_index (sfd_info, i, reloc_index);
+	      start_found = true;
+	    }
+
+	  if (!size_found && rel->r_offset == size_offset)
+	    {
+	      sfd_info->sfd_func_bfdinfo[i].func_size_r_offset = size_offset;
+	      size_found = true;
+	    }
+
+	  if (start_found && size_found)
+	    break;
 	}
 
-      BFD_ASSERT (reloc_index < sec->reloc_count);
+      if (!start_found)
+	return false;
 
-      sframe_decoder_set_func_r_offset (sfd_info, i, rel->r_offset);
-      sframe_decoder_set_func_reloc_index (sfd_info, i, reloc_index);
-
-      reloc_index++;
-      rel++;
+      /* Record the input FRE block so a final link can use the relocated
+	 bytes directly instead of decoding the whole SFrame section again.  */
+      uint32_t fre_offset
+	= sframe_decoder_get_offsetof_fde_start_fre (sfd_info->sfd_ctx, i,
+						     NULL);
+      char *fre_buf = NULL;
+      size_t fre_size = 0;
+      uint32_t num_fres = 0;
+      int fre_err = sframe_decoder_get_fres_buf (sfd_info->sfd_ctx, i,
+						 &fre_buf, &fre_size,
+						 &num_fres);
+      if (fre_err != 0
+	  || fre_offset > sec->size
+	  || fre_size > sec->size - fre_offset)
+	return false;
+      sfd_info->sfd_func_bfdinfo[i].func_fre_offset = fre_offset;
+      sfd_info->sfd_func_bfdinfo[i].func_fre_size = fre_size;
     }
-
-  /* If there are more relocation entries, they must be R_*_NONE which
-     may be generated from relocations against discarded sections by
-     ld -r.  */
-  for (; rel < cookie->relend; rel++)
-   if (rel->r_info != 0)
-     break;
-  BFD_ASSERT (rel == cookie->relend);
 
   return true;
 }
@@ -572,6 +601,13 @@ _bfd_elf_merge_section_sframe (bfd *abfd,
 							      NULL);
 	      address -= offsetof_fde_in_sec;
 
+	      /* Read the function size after relocation so changes made by
+		 relaxation are reflected in the output SFrame.  */
+	      unsigned int size_r_offset
+		= sfd_info->sfd_func_bfdinfo[i].func_size_r_offset;
+	      if (size_r_offset != 0)
+		func_size = bfd_get_32 (abfd, contents + size_r_offset);
+
 	      /* FIXME For testing only. Cleanup later.  */
 	      // address += (sec->output_section->vma);
 
@@ -588,10 +624,26 @@ _bfd_elf_merge_section_sframe (bfd *abfd,
       uint32_t fde_num_fres = 0;
       char *fres_buf = NULL;
       size_t fres_buf_size = 0;
+      int err = 0;
 
-      int err = sframe_decoder_get_fres_buf (sfd_ctx, i, &fres_buf,
+      if (!bfd_link_relocatable (info)
+	  && (sec->flags & SEC_LINKER_CREATED) == 0)
+	{
+	  unsigned int fre_offset
+	    = sfd_info->sfd_func_bfdinfo[i].func_fre_offset;
+	  size_t fre_size
+	    = sfd_info->sfd_func_bfdinfo[i].func_fre_size;
+
+	  fres_buf = (char *) contents + fre_offset;
+	  fres_buf_size = fre_size;
+	}
+      else
+	{
+	  err = sframe_decoder_get_fres_buf (sfd_ctx, i, &fres_buf,
 					     &fres_buf_size, &fde_num_fres);
-      BFD_ASSERT (!err && fde_num_fres == num_fres);
+	  BFD_ASSERT (!err && fde_num_fres == num_fres);
+	}
+
       err = sframe_encoder_add_fres_buf (sfe_ctx, cur_fidx - 1 + num_enc_fidx,
 					 num_fres, fres_buf, fres_buf_size);
       BFD_ASSERT (!err);
