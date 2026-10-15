@@ -18,6 +18,7 @@ LIBSFRAME_3.0 {
     sframe_decoder_get_abi_arch;
     sframe_decoder_get_version;
     sframe_decoder_get_offsetof_fde_start_addr;
+    sframe_decoder_get_offsetof_fde_start_fre;
     sframe_decoder_get_fixed_fp_offset;
     sframe_decoder_get_fixed_ra_offset;
     sframe_find_fre;

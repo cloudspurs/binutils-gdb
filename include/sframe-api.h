@@ -140,6 +140,13 @@ uint32_t
 sframe_decoder_get_offsetof_fde_start_addr (const sframe_decoder_ctx *dctx,
 					    uint32_t func_idx, int *errp);
 
+/* Get the offset of the function FRE block (including the FDE attributes in
+   SFrame V3) of the FDE at FUNC_IDX in the decoder context DCTX.  The offset
+   is relative to the start of the on-disk SFrame section.  */
+extern uint32_t
+sframe_decoder_get_offsetof_fde_start_fre (const sframe_decoder_ctx *dctx,
+					    uint32_t func_idx, int *errp);
+
 /* Return the number of function descriptor entries in the SFrame decoder
    DCTX.  */
 extern uint32_t

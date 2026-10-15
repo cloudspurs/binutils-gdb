@@ -503,10 +503,15 @@ struct sframe_func_bfdinfo
 {
   /* Whether the function has been discarded from the final output.  */
   bool func_deleted_p;
-  /* Relocation offset.  */
+  /* Relocation offset of the function start address.  */
   unsigned int func_r_offset;
-  /* Relocation index.  */
+  /* Relocation index of the function start address.  */
   unsigned int func_reloc_index;
+  /* Relocation offset of the function size.  */
+  unsigned int func_size_r_offset;
+  /* Offset and size of the function FRE block in the input section.  */
+  unsigned int func_fre_offset;
+  unsigned int func_fre_size;
 };
 
 /* Link state information of the SFrame section.  */

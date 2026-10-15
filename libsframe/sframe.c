@@ -1608,6 +1608,35 @@ sframe_decoder_get_offsetof_fde_start_addr (const sframe_decoder_ctx *dctx,
   return 0;
 }
 
+/* Get the offset of the function FRE block (including the FDE attributes in
+   SFrame V3) of the FDE at FUNC_IDX in the decoder context DCTX.  */
+
+uint32_t
+sframe_decoder_get_offsetof_fde_start_fre (const sframe_decoder_ctx *dctx,
+					    uint32_t func_idx, int *errp)
+{
+  if (dctx == NULL)
+    {
+      sframe_ret_set_errno (errp, SFRAME_ERR_INVAL);
+      return 0;
+    }
+
+  sframe_func_desc_entry_int *fdep
+    = sframe_decoder_get_funcdesc_at_index (dctx, func_idx);
+  if (fdep == NULL)
+    {
+      sframe_ret_set_errno (errp, SFRAME_ERR_FDE_NOTFOUND);
+      return 0;
+    }
+
+  if (errp)
+    *errp = 0;
+
+  const sframe_header *dhp = sframe_decoder_get_header (dctx);
+  return (sframe_decoder_get_hdr_size (dctx) + dhp->sfh_freoff
+	  + fdep->func_start_fre_off);
+}
+
 /* Find the function descriptor entry starting which contains the specified
    address ADDR.  */
 
