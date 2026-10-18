@@ -195,16 +195,11 @@ gld${EMULATION_NAME}_after_allocation (void)
 {
   int need_layout = 0;
 
-  /* Don't attempt to discard unused .eh_frame sections until the final link,
-     as we can't reliably tell if they're used until after relaxation.  */
-  if (!bfd_link_relocatable (&link_info))
+  need_layout = bfd_elf_discard_info (&link_info);
+  if (need_layout < 0)
     {
-      need_layout = bfd_elf_discard_info (&link_info);
-      if (need_layout < 0)
-	{
-	  einfo (_("%X%P: .eh_frame/.stab edit: %E\n"));
-	  return;
-	}
+      einfo (_("%X%P: .eh_frame/.stab edit: %E\n"));
+      return;
     }
 
   /* If generating a relocatable output file, we have to add align
