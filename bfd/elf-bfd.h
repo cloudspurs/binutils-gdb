@@ -531,6 +531,8 @@ struct sframe_dec_info
   enum sframe_sec_state sfd_state;
   /* Number of function descriptor entries in this .sframe.  */
   unsigned int sfd_fde_count;
+  /* Whether the input contains a function-size relocation.  */
+  bool sfd_has_func_size_reloc;
   /* Additional information for linking.  */
   struct sframe_func_bfdinfo *sfd_func_bfdinfo;
 };
