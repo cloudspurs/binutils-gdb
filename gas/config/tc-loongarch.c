@@ -1807,19 +1807,23 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg ATTRIBUTE_UNUSED)
 
     case BFD_RELOC_64:
     case BFD_RELOC_32:
-      /* If symbol in .eh_frame the address may be adjusted, and contents of
-	 .eh_frame will be adjusted, so use pc-relative relocation for FDE
-	 initial location.
-	 The Option of mthin-add-sub does not affect the generation of
-	 R_LARCH_32_PCREL relocation in .eh_frame.  */
-      if (fixP->fx_r_type == BFD_RELOC_32
-	  && fixP->fx_addsy && fixP->fx_subsy
+      /* The FDE initial location in .eh_frame and the FDE function start
+	 address in .sframe are relative to their own locations.  Use
+	 PC-relative relocations so the linker can adjust them after
+	 relaxation.  The mthin-add-sub option does not affect these.  */
+      if (fixP->fx_addsy && fixP->fx_subsy
 	  && (sub_segment = S_GET_SEGMENT (fixP->fx_subsy))
-	  && strcmp (sub_segment->name, ".eh_frame") == 0
+	  && ((fixP->fx_r_type == BFD_RELOC_32
+		  && strcmp (sub_segment->name, ".eh_frame") == 0)
+	      || (fixP->fx_r_type == BFD_RELOC_64
+		  && strcmp (sub_segment->name, ".sframe") == 0))
 	  && S_GET_VALUE (fixP->fx_subsy)
 	  == fixP->fx_frag->fr_address + fixP->fx_where)
 	{
-	  fixP->fx_r_type = BFD_RELOC_32_PCREL;
+	  if (fixP->fx_r_type == BFD_RELOC_32)
+	    fixP->fx_r_type = BFD_RELOC_32_PCREL;
+	  else
+	    fixP->fx_r_type = BFD_RELOC_64_PCREL;
 	  fixP->fx_subsy = NULL;
 	  break;
 	}

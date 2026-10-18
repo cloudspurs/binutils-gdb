@@ -15862,6 +15862,8 @@ is_64bit_pcrel_reloc (Filedata * filedata, unsigned int reloc_type)
     case EM_IA_64:
       return (reloc_type == 0x4e    /* R_IA64_PCREL64MSB.  */
 	      || reloc_type == 0x4f /* R_IA64_PCREL64LSB.  */);
+    case EM_LOONGARCH:
+      return reloc_type == 109; /* R_LARCH_64_PCREL.  */
     case EM_PARISC:
       return reloc_type == 72; /* R_PARISC_PCREL64.  */
     case EM_PPC64:
