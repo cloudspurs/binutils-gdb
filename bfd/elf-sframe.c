@@ -133,8 +133,22 @@ sframe_decoder_init_func_bfdinfo (bfd *abfd,
 	= fde_offset + offsetof (sframe_func_desc_idx_v3, sfdi_func_size);
       bool start_found = false;
       bool size_found = false;
+      bool fre_found = false;
+      uint32_t fre_offset
+	= sframe_decoder_get_offsetof_fde_start_fre (sfd_info->sfd_ctx, i,
+						     NULL);
+      char *fre_buf = NULL;
+      size_t fre_size = 0;
+      uint32_t num_fres = 0;
+      int fre_err = sframe_decoder_get_fres_buf (sfd_info->sfd_ctx, i,
+						 &fre_buf, &fre_size,
+						 &num_fres);
+      if (fre_err != 0
+	  || fre_offset > sec->size
+	  || fre_size > sec->size - fre_offset)
+	return false;
 
-      /* Record the function start address and size relocations in one
+      /* Record the function start, size, and FRE relocations in one
 	 traversal.  */
       for (rel = cookie->rels; rel < cookie->relend; rel++, reloc_index++)
 	{
@@ -156,28 +170,23 @@ sframe_decoder_init_func_bfdinfo (bfd *abfd,
 	      size_found = true;
 	    }
 
-	  if (start_found && size_found)
+	  if (!fre_found
+	      && rel->r_offset >= fre_offset
+	      && rel->r_offset - fre_offset < fre_size)
+	    {
+	      sfd_info->sfd_has_fre_reloc = true;
+	      fre_found = true;
+	    }
+
+	  if (start_found
+	      && size_found
+	      && (fre_size == 0 || fre_found))
 	    break;
 	}
 
       if (!start_found)
 	return false;
 
-      /* Record the input FRE block so a final link can use the relocated
-	 bytes directly instead of decoding the whole SFrame section again.  */
-      uint32_t fre_offset
-	= sframe_decoder_get_offsetof_fde_start_fre (sfd_info->sfd_ctx, i,
-						     NULL);
-      char *fre_buf = NULL;
-      size_t fre_size = 0;
-      uint32_t num_fres = 0;
-      int fre_err = sframe_decoder_get_fres_buf (sfd_info->sfd_ctx, i,
-						 &fre_buf, &fre_size,
-						 &num_fres);
-      if (fre_err != 0
-	  || fre_offset > sec->size
-	  || fre_size > sec->size - fre_offset)
-	return false;
       sfd_info->sfd_func_bfdinfo[i].func_fre_offset = fre_offset;
       sfd_info->sfd_func_bfdinfo[i].func_fre_size = fre_size;
     }
@@ -405,6 +414,23 @@ _bfd_elf_set_section_sframe (bfd *abfd, struct bfd_link_info *info)
 
   elf_section_type (cfsec) = SHT_GNU_SFRAME;
   elf_sframe (abfd) = cfsec;
+
+  struct sframe_enc_info *sfe_info = &elf_hash_table (info)->sfe_info;
+  sfe_info->sfe_fde_count = 0;
+  sfe_info->sfe_fre_size = 0;
+  /* Count retained FDEs to locate FRE data after the FDE table.  */
+  for (asection *sec = cfsec->map_head.s; sec != NULL; sec = sec->map_head.s)
+    {
+      if (sec->sec_info_type != SEC_INFO_TYPE_SFRAME)
+	continue;
+
+      struct sframe_dec_info *sfd_info = sec->sec_info;
+      unsigned int num_fdes
+	= sframe_decoder_get_num_fidx (sfd_info->sfd_ctx);
+      for (unsigned int i = 0; i < num_fdes; i++)
+	if (!sframe_decoder_func_deleted_p (sfd_info, i))
+	  sfe_info->sfe_fde_count++;
+    }
 
   return true;
 }
@@ -648,6 +674,7 @@ _bfd_elf_merge_section_sframe (bfd *abfd,
       err = sframe_encoder_add_fres_buf (sfe_ctx, cur_fidx - 1 + num_enc_fidx,
 					 num_fres, fres_buf, fres_buf_size);
       BFD_ASSERT (!err);
+      sfe_info->sfe_fre_size += fres_buf_size;
     }
 
   sfd_info->sfd_state = SFRAME_SEC_MERGED;
@@ -703,8 +730,12 @@ _bfd_elf_sframe_section_offset (bfd *output_bfd ATTRIBUTE_UNUSED,
   sec_fde_idx = 0;
   bool sec_fde_start_found = false;
   bool sec_fde_size_found = false;
+  bool sec_fde_fre_found = false;
+  bool relocatable = bfd_link_relocatable (info);
   bool remap_func_size
-    = bfd_link_relocatable (info) && sfd_info->sfd_has_func_size_reloc;
+    = relocatable && sfd_info->sfd_has_func_size_reloc;
+  bool remap_fre
+    = relocatable && sfd_info->sfd_has_fre_reloc;
   for (unsigned int i = 0; i < sfd_num_fdes; i++)
     {
       sfd_fde_offset = sframe_decoder_get_offsetof_fde_start_addr (sfd_ctx,
@@ -732,13 +763,29 @@ _bfd_elf_sframe_section_offset (bfd *output_bfd ATTRIBUTE_UNUSED,
 	      break;
 	    }
 	}
+
+      if (remap_fre)
+	{
+	  uint32_t func_fre_offset
+	    = sfd_info->sfd_func_bfdinfo[i].func_fre_offset;
+	  uint32_t func_fre_size
+	    = sfd_info->sfd_func_bfdinfo[i].func_fre_size;
+	  if (offset >= func_fre_offset
+	      && offset - func_fre_offset < func_fre_size)
+	    {
+	      sec_fde_idx = i;
+	      sec_fde_fre_found = true;
+	      break;
+	    }
+	}
     }
 
-  /* Keep FDE start address and function size relocations in relocatable
-     output.  */
+  /* Keep FDE start address, function size, and FRE relocations in
+     relocatable output.  */
   if (!sec_fde_start_found
       && !sec_fde_size_found
-      && remap_func_size)
+      && !sec_fde_fre_found
+      && (remap_func_size || remap_fre))
     return (bfd_vma) -1;
 
   if (sframe_decoder_func_deleted_p (sfd_info, sec_fde_idx))
@@ -753,6 +800,23 @@ _bfd_elf_sframe_section_offset (bfd *output_bfd ATTRIBUTE_UNUSED,
 							   NULL);
   if (sec_fde_size_found)
     new_offset += offset - sfd_fde_offset;
+  else if (sec_fde_fre_found)
+    {
+      /* FRE blocks follow the complete output FDE table and are concatenated
+	 in function order.  */
+      bfd_size_type output_fre_offset = sfe_info->sfe_fre_size;
+      for (unsigned int i = 0; i < sec_fde_idx; i++)
+	if (!sframe_decoder_func_deleted_p (sfd_info, i))
+	  output_fre_offset
+	    += sfd_info->sfd_func_bfdinfo[i].func_fre_size;
+
+      output_fre_offset
+	+= sframe_decoder_get_hdr_size (sfd_ctx)
+	   + sfe_info->sfe_fde_count * sizeof (sframe_func_desc_idx_v3);
+      new_offset = output_fre_offset
+		   + offset
+		     - sfd_info->sfd_func_bfdinfo[sec_fde_idx].func_fre_offset;
+    }
   /* Recall that SFrame section merging has distinct requirements: All SFrame
      FDEs from input sections are clubbed together in the beginning of the
      output section.  So, at this point in the current function, the new_offset

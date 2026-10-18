@@ -533,6 +533,8 @@ struct sframe_dec_info
   unsigned int sfd_fde_count;
   /* Whether the input contains a function-size relocation.  */
   bool sfd_has_func_size_reloc;
+  /* Whether the input contains an FRE relocation.  */
+  bool sfd_has_fre_reloc;
   /* Additional information for linking.  */
   struct sframe_func_bfdinfo *sfd_func_bfdinfo;
 };
@@ -546,6 +548,12 @@ struct sframe_enc_info
   struct sframe_encoder_ctx *sfe_ctx;
   /* Output section.  */
   asection *sframe_section;
+  /* Number of FDEs to be emitted in the output SFrame section.  Used to
+     calculate the start of the FRE data.  */
+  bfd_size_type sfe_fde_count;
+  /* Number of FRE bytes currently added to the output SFrame section.
+     Used to locate FRE data from subsequent input sections.  */
+  bfd_size_type sfe_fre_size;
 };
 
 /* Enum used to identify target specific extensions to the elf_obj_tdata
