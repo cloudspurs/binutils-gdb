@@ -152,6 +152,7 @@ sframe_decoder_init_func_bfdinfo (bfd *abfd,
 	  if (!size_found && rel->r_offset == size_offset)
 	    {
 	      sfd_info->sfd_func_bfdinfo[i].func_size_r_offset = size_offset;
+	      sfd_info->sfd_has_func_size_reloc = true;
 	      size_found = true;
 	    }
 
@@ -700,6 +701,10 @@ _bfd_elf_sframe_section_offset (bfd *output_bfd ATTRIBUTE_UNUSED,
      functions (between index 0 and sec_fde_idx), if any.  */
   out_num_fdes = 0;
   sec_fde_idx = 0;
+  bool sec_fde_start_found = false;
+  bool sec_fde_size_found = false;
+  bool remap_func_size
+    = bfd_link_relocatable (info) && sfd_info->sfd_has_func_size_reloc;
   for (unsigned int i = 0; i < sfd_num_fdes; i++)
     {
       sfd_fde_offset = sframe_decoder_get_offsetof_fde_start_addr (sfd_ctx,
@@ -711,9 +716,30 @@ _bfd_elf_sframe_section_offset (bfd *output_bfd ATTRIBUTE_UNUSED,
 	{
 	  /* Found the index of the FDE (at OFFSET) in the input section.  */
 	  sec_fde_idx = i;
+	  sec_fde_start_found = true;
 	  break;
 	}
+
+      if (remap_func_size)
+	{
+	  uint32_t func_size_offset
+	    = sfd_fde_offset
+	      + offsetof (sframe_func_desc_idx_v3, sfdi_func_size);
+	  if (func_size_offset == offset)
+	    {
+	      sec_fde_idx = i;
+	      sec_fde_size_found = true;
+	      break;
+	    }
+	}
     }
+
+  /* Keep FDE start address and function size relocations in relocatable
+     output.  */
+  if (!sec_fde_start_found
+      && !sec_fde_size_found
+      && remap_func_size)
+    return (bfd_vma) -1;
 
   if (sframe_decoder_func_deleted_p (sfd_info, sec_fde_idx))
     return (bfd_vma) -1;
@@ -725,6 +751,8 @@ _bfd_elf_sframe_section_offset (bfd *output_bfd ATTRIBUTE_UNUSED,
   new_offset = sframe_decoder_get_offsetof_fde_start_addr (sfd_ctx,
 							   out_num_fdes - 1,
 							   NULL);
+  if (sec_fde_size_found)
+    new_offset += offset - sfd_fde_offset;
   /* Recall that SFrame section merging has distinct requirements: All SFrame
      FDEs from input sections are clubbed together in the beginning of the
      output section.  So, at this point in the current function, the new_offset
