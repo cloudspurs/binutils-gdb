@@ -28,7 +28,7 @@ proc gas_x86_64_check { } {
 
 # common tests
 if  { ([istarget "x86_64-*-*"] || [istarget "aarch64*-*-*"]
-       || [istarget "s390x-*-*"]) \
+       || [istarget "s390x-*-*"] || [istarget "loongarch*-*-*"]) \
       && [gas_sframe_check] } then {
 
     global ASFLAGS
