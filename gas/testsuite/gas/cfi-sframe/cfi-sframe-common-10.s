@@ -6,7 +6,7 @@
 	.cfi_startproc
 	.long 0
 	.cfi_def_cfa_offset 16
-	.cfi_undefined 1
 	.cfi_undefined 2
+	.cfi_undefined 4
 	.long 0
 	.cfi_endproc
