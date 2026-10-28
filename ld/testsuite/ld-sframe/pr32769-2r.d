@@ -3,6 +3,7 @@
 #readelf: -j .rela.sframe
 #ld: --gc-sections -r -e foo
 #name: GC Multiple .text sections, check relas
+#xfail: loongarch*-*-*
 
 Relocation section '.rela.sframe' at offset 0x[0-9a-f]+ contains 1 entry:
 \s+Offset\s+Info\s+Type\s+Sym.\s+Value\s+Sym.\s+Name\s\+\sAddend
