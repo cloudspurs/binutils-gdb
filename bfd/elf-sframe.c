@@ -432,6 +432,17 @@ _bfd_elf_set_section_sframe (bfd *abfd, struct bfd_link_info *info)
 	  sfe_info->sfe_fde_count++;
     }
 
+  /* Relocatable output preserves the encoder insertion order, so one flag
+     per retained output FDE identifies the fields that must be reset.  */
+  if (sfe_info->sfe_fde_count != 0)
+    {
+      sfe_info->sfe_func_size_relocs
+	= bfd_zalloc (abfd, sfe_info->sfe_fde_count
+			   * sizeof (*sfe_info->sfe_func_size_relocs));
+      if (sfe_info->sfe_func_size_relocs == NULL)
+	return false;
+    }
+
   return true;
 }
 
@@ -454,6 +465,7 @@ _bfd_elf_merge_section_sframe (bfd *abfd,
   uint8_t dctx_flags;
   uint8_t ectx_flags;
   int encerr = 0;
+  bfd_byte *relocated_contents = NULL;
 
   struct elf_link_hash_table *htab;
   asection *cfsec;
@@ -550,6 +562,18 @@ _bfd_elf_merge_section_sframe (bfd *abfd,
       return false;
     }
 
+  /* Relocations are not applied to section contents for a relocatable link.
+     Read a relocated copy when a function size is represented by a
+     relocation, since the encoder uses it to validate FRE start addresses.  */
+  if (bfd_link_relocatable (info) && sfd_info->sfd_has_func_size_reloc)
+    {
+      relocated_contents
+	= bfd_simple_get_relocated_section_contents (sec->owner, sec,
+						     NULL, NULL);
+      if (relocated_contents == NULL)
+	return false;
+    }
+
   /* Iterate over the function descriptor entries and the FREs of the
      function from the decoder context.  Add each of them to the encoder
      context, if suitable.  */
@@ -640,10 +664,26 @@ _bfd_elf_merge_section_sframe (bfd *abfd,
 
 	      func_start_addr = address;
 	    }
+	  else if (relocated_contents != NULL)
+	    {
+	      /* The on-disk value is zero until its relocation is applied.
+		 Use the relocated copy only to validate the FRE range.  */
+	      unsigned int size_r_offset
+		= sfd_info->sfd_func_bfdinfo[i].func_size_r_offset;
+	      if (size_r_offset != 0)
+		func_size = bfd_get_32 (sec->owner,
+					relocated_contents + size_r_offset);
+	    }
 
 	  /* Update the encoder context with FDE index entry.  */
+	  uint32_t out_fde_idx = cur_fidx + num_enc_fidx;
+	  /* Record the encoder index before adding the descriptor, because
+	     this output FDE must later be changed back to a zero placeholder.  */
+	  if (sfd_info->sfd_func_bfdinfo[i].func_size_r_offset != 0)
+	    sfe_info->sfe_func_size_relocs[out_fde_idx] = true;
 	  int err = sframe_encoder_add_funcdesc (sfe_ctx, func_start_addr,
 						 func_size);
+
 	  cur_fidx++;
 	  BFD_ASSERT (!err);
 	}
@@ -678,6 +718,7 @@ _bfd_elf_merge_section_sframe (bfd *abfd,
     }
 
   sfd_info->sfd_state = SFRAME_SEC_MERGED;
+  free (relocated_contents);
   /* Free the SFrame decoder context.  */
   sframe_decoder_free (&sfd_info->sfd_ctx);
 
@@ -833,6 +874,36 @@ _bfd_elf_sframe_section_offset (bfd *output_bfd ATTRIBUTE_UNUSED,
   return new_offset;
 }
 
+/* Function size relocations are retained in relocatable output.  Clear the
+   corresponding output fields after encoding so that the relocations continue
+   to provide the complete value when the output is linked again.  */
+static void
+sframe_clear_relocated_func_sizes (bfd *abfd,
+				   struct bfd_link_info *info,
+				   char *contents,
+				   sframe_encoder_ctx *sfe_ctx)
+{
+  struct elf_link_hash_table *htab = elf_hash_table (info);
+  struct sframe_enc_info *sfe_info = &htab->sfe_info;
+
+  if (!bfd_link_relocatable (info)
+      || sfe_info->sfe_func_size_relocs == NULL)
+    return;
+
+  for (uint32_t i = 0; i < sfe_info->sfe_fde_count; i++)
+    {
+      /* The encoder has not sorted relocatable output, so flag index I is
+	 the output FDE index used by the offset query below.  */
+      if (sfe_info->sfe_func_size_relocs[i])
+	{
+	  uint32_t size_offset
+	    = sframe_encoder_get_offsetof_fde_start_addr (sfe_ctx, i, NULL)
+	      + offsetof (sframe_func_desc_idx_v3, sfdi_func_size);
+	  bfd_put_32 (abfd, 0, (bfd_byte *) contents + size_offset);
+	}
+    }
+}
+
 /* Write out the .sframe section.  This must be called after
    _bfd_elf_merge_section_sframe has been called on all input
    .sframe sections.  */
@@ -861,6 +932,7 @@ _bfd_elf_write_section_sframe (bfd *abfd, struct bfd_link_info *info)
   bool sort_p = !bfd_link_relocatable (info);
   contents = sframe_encoder_write (sfe_ctx, &sec_size, sort_p, &err);
   sec->size = (bfd_size_type) sec_size;
+  sframe_clear_relocated_func_sizes (abfd, info, contents, sfe_ctx);
 
   if (!bfd_set_section_contents (abfd, sec->output_section, contents,
 				 (file_ptr) sec->output_offset,

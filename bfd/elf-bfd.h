@@ -551,6 +551,9 @@ struct sframe_enc_info
   /* Number of FDEs to be emitted in the output SFrame section.  Used to
      calculate the start of the FRE data.  */
   bfd_size_type sfe_fde_count;
+  /* One flag per output FDE indicating that its function size is
+     represented by a relocation.  */
+  bool *sfe_func_size_relocs;
   /* Number of FRE bytes currently added to the output SFrame section.
      Used to locate FRE data from subsequent input sections.  */
   bfd_size_type sfe_fre_size;
