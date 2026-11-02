@@ -2432,7 +2432,8 @@ sframe_do_fde (struct sframe_xlate_ctx *xlate_ctx,
       return SFRAME_XLATE_ERR_NOTREPRESENTED;
     }
 
-  /* ABI/arch except s390x cannot represent FP without RA saved.  */
+  /* An FDE without flex support cannot represent FP on the stack without RA
+     on the stack, except for s390x DEFAULT FDEs, which use RA padding.  */
   if (sframe_ra_tracking_p ()
       && sframe_get_abi_arch () != SFRAME_ABI_S390X_ENDIAN_BIG)
     {
@@ -2441,12 +2442,17 @@ sframe_do_fde (struct sframe_xlate_ctx *xlate_ctx,
       /* Iterate over the scratchpad FREs and validate them.  */
       for (fre = xlate_ctx->first_fre; fre; fre = fre->next)
 	{
-	  /* SFrame format cannot represent FP on stack without RA on stack.  */
+	  /* A DEFAULT FDE cannot represent FP on stack without RA on stack.  */
 	  if (fre->ra_loc != SFRAME_FRE_ELEM_LOC_STACK
 	      && fre->fp_loc == SFRAME_FRE_ELEM_LOC_STACK)
 	    {
-	      as_warn (_("no SFrame FDE emitted; FP without RA on stack"));
-	      return SFRAME_XLATE_ERR_NOTREPRESENTED;
+	      if (sframe_support_flex_fde_p ())
+		xlate_ctx->flex_p = true;
+	      else
+		{
+		  as_warn (_("no SFrame FDE emitted; FP without RA on stack"));
+		  return SFRAME_XLATE_ERR_NOTREPRESENTED;
+		}
 	    }
 	}
     }

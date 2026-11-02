@@ -150,7 +150,7 @@ unsigned char loongarch_sframe_get_abi_arch (void);
 #define sframe_get_abi_arch loongarch_sframe_get_abi_arch
 
 /* Whether SFrame FDE of type SFRAME_FDE_TYPE_FLEX is generated.  */
-#define sframe_support_flex_fde_p() false
+#define sframe_support_flex_fde_p() true
 #endif
 
 #define tc_parse_to_dw2regnum tc_loongarch_parse_to_dw2regnum
