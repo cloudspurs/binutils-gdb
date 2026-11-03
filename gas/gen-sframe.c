@@ -1889,7 +1889,7 @@ sframe_xlate_do_escape_expr (struct sframe_xlate_ctx *xlate_ctx,
 
   unsigned opcode = items[2];
   unsigned int fp_base_reg = SFRAME_FRE_REG_INVALID;
-  bool x86_fp_deref_p = true;
+  bool x86_fp_deref_p = false;
 
   if (sframe_get_abi_arch () == SFRAME_ABI_AMD64_ENDIAN_LITTLE
       && sframe_support_flex_fde_p ()
