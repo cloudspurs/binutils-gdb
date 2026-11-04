@@ -16,8 +16,13 @@ foo:
 	.type	bar, @function
 bar:
 	.cfi_startproc
+	.cfi_offset 22, -16
 	.space	4
+	.cfi_register 1, 19
+	.space	4
+	.cfi_offset 1, -8
+	.space	4
+	.cfi_restore 1
 	call36	foo
-	.space	8
 	.cfi_endproc
 	.size	bar, .-bar

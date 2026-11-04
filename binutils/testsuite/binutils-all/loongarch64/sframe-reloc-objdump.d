@@ -13,7 +13,7 @@ Contents of the SFrame section .sframe:
     Version: SFRAME_VERSION_3
     Flags: SFRAME_F_FDE_FUNC_START_PCREL
     Num FDEs: 2
-    Num FREs: 2
+    Num FREs: 5
 
   Function Index :
 
@@ -21,6 +21,9 @@ Contents of the SFrame section .sframe:
     STARTPC         CFA       FP        RA +
     0+0000 +sp\+0 +u +u +
 
-    func idx \[1\]: pc = 0x8, size = 20 bytes
+    func idx \[1\]: pc = 0x8, size = 20 bytes, attr = "F"
     STARTPC         CFA       FP        RA +
-    0+0008 +sp\+0 +u +u +
+    0+0008 +sp\+0 +c\-16 +U +
+    0+000c +sp\+0 +c\-16 +r19\+0 +
+    0+0010 +sp\+0 +c\-16 +c\-8 +
+    0+0014 +sp\+0 +c\-16 +U +
