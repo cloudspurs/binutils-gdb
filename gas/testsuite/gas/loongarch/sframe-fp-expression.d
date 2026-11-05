@@ -1,7 +1,6 @@
 #as: --gsframe
-#warning: \.cfi_escape DW_CFA_expression with FP reg 22
 #objdump: --sframe=.sframe
-#name: LoongArch SFrame rejects unsupported FP expression
+#name: LoongArch SFrame accepts representable FP expression
 
 #...
 Contents of the SFrame section \.sframe:
@@ -12,7 +11,13 @@ Contents of the SFrame section \.sframe:
     Flags: SFRAME_F_FDE_FUNC_START_PCREL
 #?    CFA fixed FP offset: \-?\d+
 #?    CFA fixed RA offset: \-?\d+
-    Num FDEs: 0
-    Num FREs: 0
+    Num FDEs: 1
+    Num FREs: 1
+
+  Function Index :
+
+    func idx \[0\]: pc = 0x0, size = 4 bytes, attr = "F"
+    STARTPC +CFA +FP +RA +
+    0+0000 +sp\+0 +\(sp\-16\) +U +
 
 #pass

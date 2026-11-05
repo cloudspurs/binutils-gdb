@@ -1,4 +1,4 @@
-# LoongArch SFrame currently rejects FP expressions.
+# LoongArch SFrame flex FDE with FP recovered from an expression.
 	.cfi_sections .sframe
 	.text
 	.globl	foo

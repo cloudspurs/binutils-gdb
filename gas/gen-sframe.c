@@ -1333,7 +1333,7 @@ sframe_xlate_do_def_cfa_register (struct sframe_xlate_ctx *xlate_ctx,
 	  return SFRAME_XLATE_ERR_NOTREPRESENTED;
 	}
       else
-	/* Currently, SFRAME_FDE_TYPE_FLEX is generated for AMD64 only.  */
+	/* A non-SP/FP CFA base register requires a flex FDE.  */
 	xlate_ctx->flex_p = true;
     }
 
@@ -1888,29 +1888,33 @@ sframe_xlate_do_escape_expr (struct sframe_xlate_ctx *xlate_ctx,
   unsigned int reg = items[0];
 
   unsigned opcode = items[2];
-  unsigned int fp_base_reg = SFRAME_FRE_REG_INVALID;
-  bool x86_fp_deref_p = false;
-
-  if (sframe_get_abi_arch () == SFRAME_ABI_AMD64_ENDIAN_LITTLE
-      && sframe_support_flex_fde_p ()
-      && opcode == DW_OP_breg6)
-    {
-      x86_fp_deref_p = true;
-      fp_base_reg = SFRAME_CFA_FP_REG;
-    }
+  unsigned int expression_base_reg
+    = (opcode >= DW_OP_breg0 && opcode <= DW_OP_breg31
+       ? opcode - DW_OP_breg0 : SFRAME_FRE_REG_INVALID);
 
   struct sframe_row_entry *cur_fre = xlate_ctx->cur_fre;
   gas_assert (cur_fre);
 
-  if (x86_fp_deref_p
-      && reg == SFRAME_CFA_FP_REG
+  if (sframe_support_flex_fde_p ()
+      && expression_base_reg != SFRAME_FRE_REG_INVALID
+      && (reg == SFRAME_CFA_FP_REG || reg == SFRAME_CFA_RA_REG)
       && sframe_fre_stack_offset_bound_p (offset, false))
     {
       xlate_ctx->flex_p = true;
-      sframe_fre_set_fp_track (cur_fre, offset);
-      cur_fre->fp_loc = SFRAME_FRE_ELEM_LOC_REG;
-      cur_fre->fp_reg = fp_base_reg;
-      cur_fre->fp_deref_p = true;
+      if (reg == SFRAME_CFA_FP_REG)
+	{
+	  sframe_fre_set_fp_track (cur_fre, offset);
+	  cur_fre->fp_loc = SFRAME_FRE_ELEM_LOC_REG;
+	  cur_fre->fp_reg = expression_base_reg;
+	  cur_fre->fp_deref_p = true;
+	}
+      else
+	{
+	  sframe_fre_set_ra_track (cur_fre, offset);
+	  cur_fre->ra_loc = SFRAME_FRE_ELEM_LOC_REG;
+	  cur_fre->ra_reg = expression_base_reg;
+	  cur_fre->ra_deref_p = true;
+	}
       cur_fre->merge_candidate = false;
     }
   else if (reg == SFRAME_CFA_SP_REG || reg == SFRAME_CFA_FP_REG
