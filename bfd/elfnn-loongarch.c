@@ -26,6 +26,8 @@
 #include "elf-bfd.h"
 #include "objalloc.h"
 #include "splay-tree.h"
+#include "sframe.h"
+#include "sframe-api.h"
 #include "elf/loongarch.h"
 #include "elfxx-loongarch.h"
 #include "opcode/loongarch.h"
@@ -104,6 +106,8 @@ struct loongarch_elf_link_hash_table
 
   /* Short-cuts to get to dynamic linker sections.  */
   asection *sdyntdata;
+  sframe_encoder_ctx *plt_cfe_ctx;
+  asection *plt_sframe;
 
   /* Small local sym to section mapping cache.  */
   struct sym_cache sym_cache;
@@ -196,6 +200,9 @@ loongarch_elf_new_section_hook (bfd *abfd, asection *sec)
 
 #define GOT_ENTRY_SIZE (LARCH_ELF_WORD_BYTES)
 
+/* The first FDE starts immediately after the linker-created SFrame header.  */
+#define PLT_SFRAME_FDE_START_OFFSET sizeof (sframe_header)
+
 /* Reserve two entries of GOTPLT for ld.so, one is used for PLT
    resolver _dl_runtime_resolve, the other is used for link map.  */
 #define GOTPLT_HEADER_SIZE (GOT_ENTRY_SIZE * 2)
@@ -215,6 +222,15 @@ loongarch_elf_new_section_hook (bfd *abfd, asection *sec)
 #define elf_backend_want_dynrelro 1
 #define elf_backend_rela_normal 1
 #define elf_backend_default_execstack 0
+
+/* PLT0 and PLTn do not change SP or save RA.  Their FRE therefore describes
+   an unchanged CFA relative to SP, leaving RA to remain in $r1.  */
+static const sframe_frame_row_entry loongarch_sframe_plt_fre =
+{
+  0, /* SFrame FRE start address.  */
+  { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+  SFRAME_V1_FRE_INFO (SFRAME_BASE_REG_SP, 1, SFRAME_FRE_OFFSET_1B)
+};
 
 #define IS_LOONGARCH_TLS_TRANS_RELOC(R_TYPE)  \
   ((R_TYPE) == R_LARCH_TLS_DESC_PC_HI20	      \
@@ -377,6 +393,85 @@ loongarch_make_plt_entry (bfd_vma got_plt_entry_addr, bfd_vma plt_entry_addr,
   return true;
 }
 
+/* Create SFrame stack trace information for the LoongArch PLT section.  */
+
+static bool
+loongarch_elf_create_sframe_plt (struct bfd_link_info *info)
+{
+  struct loongarch_elf_link_hash_table *htab
+    = loongarch_elf_hash_table (info);
+  asection *dpltsec = htab->elf.splt;
+  sframe_encoder_ctx **ectx = &htab->plt_cfe_ctx;
+  unsigned int plt_entry_count;
+  unsigned int num_fres = 1;
+  uint32_t fre_type;
+  unsigned char func_info;
+  int err = 0;
+
+  BFD_ASSERT (dpltsec != NULL && dpltsec->size >= PLT_HEADER_SIZE);
+  BFD_ASSERT ((dpltsec->size - PLT_HEADER_SIZE) % PLT_ENTRY_SIZE == 0);
+  plt_entry_count = (dpltsec->size - PLT_HEADER_SIZE) / PLT_ENTRY_SIZE;
+
+  *ectx = sframe_encode (SFRAME_VERSION_3,
+			 SFRAME_F_FDE_FUNC_START_PCREL,
+			 SFRAME_ABI_LOONGARCH_ENDIAN_LITTLE,
+			 SFRAME_CFA_FIXED_FP_INVALID,
+			 SFRAME_CFA_FIXED_RA_INVALID,
+			 &err);
+  if (*ectx == NULL)
+    return false;
+
+  fre_type = sframe_calc_fre_type (dpltsec->size);
+  func_info = sframe_fde_create_func_info (fre_type, SFRAME_V3_FDE_PCTYPE_INC);
+  sframe_frame_row_entry plt_fre = loongarch_sframe_plt_fre;
+
+  /* PLT0 is a single FDE.  Its start address is filled in after layout.  */
+  sframe_encoder_add_funcdesc_v3 (*ectx, 0, PLT_HEADER_SIZE, func_info,
+				  0, 0, num_fres);
+  sframe_encoder_add_fre (*ectx, 0, &plt_fre);
+
+  if (plt_entry_count != 0)
+    {
+      /* All PLTn entries share the same instruction pattern and FRE.  */
+      func_info = sframe_fde_create_func_info (fre_type,
+					       SFRAME_V3_FDE_PCTYPE_MASK);
+      sframe_encoder_add_funcdesc_v3 (*ectx, PLT_HEADER_SIZE,
+				      dpltsec->size - PLT_HEADER_SIZE,
+				      func_info, 0, PLT_ENTRY_SIZE, num_fres);
+      sframe_encoder_add_fre (*ectx, 1, &plt_fre);
+    }
+
+  return true;
+}
+
+/* Write the linker-created LoongArch PLT SFrame section.  */
+
+static bool
+loongarch_elf_write_sframe_plt (struct bfd_link_info *info)
+{
+  struct loongarch_elf_link_hash_table *htab
+    = loongarch_elf_hash_table (info);
+  sframe_encoder_ctx **ectx = &htab->plt_cfe_ctx;
+  asection *sec = htab->plt_sframe;
+  size_t sec_size;
+  int err = 0;
+
+  BFD_ASSERT (*ectx != NULL);
+  void *contents = sframe_encoder_write (*ectx, &sec_size, false, &err);
+  if (contents == NULL)
+    return false;
+
+  sec->size = sec_size;
+  sec->contents = bfd_zalloc (htab->elf.dynobj, sec->size);
+  if (sec->contents == NULL)
+    return false;
+  sec->alloced = 1;
+  memcpy (sec->contents, contents, sec_size);
+  sframe_encoder_free (ectx);
+
+  return true;
+}
+
 /* Create an entry in an LoongArch ELF linker hash table.  */
 
 static struct bfd_hash_entry *
@@ -485,6 +580,7 @@ elfNN_loongarch_link_hash_table_free (bfd *obfd)
   struct loongarch_elf_link_hash_table *ret;
   ret = (struct loongarch_elf_link_hash_table *) obfd->link.hash;
 
+  sframe_encoder_free (&ret->plt_cfe_ctx);
   if (ret->loc_hash_table)
     htab_delete (ret->loc_hash_table);
   if (ret->loc_hash_memory)
@@ -683,6 +779,22 @@ loongarch_elf_create_dynamic_sections (bfd *dynobj, struct bfd_link_info *info)
 
   if (!_bfd_elf_create_dynamic_sections (dynobj, info))
     return false;
+
+  if (htab->elf.splt != NULL
+      && _bfd_elf_sframe_present_input_bfds (info)
+      && !info->discard_sframe)
+    {
+      flagword flags = (SEC_ALLOC | SEC_LOAD | SEC_READONLY
+			| SEC_HAS_CONTENTS | SEC_IN_MEMORY
+			| SEC_LINKER_CREATED);
+
+      htab->plt_sframe = bfd_make_section_anyway_with_flags (dynobj,
+							     ".sframe",
+							     flags);
+      if (htab->plt_sframe == NULL)
+	return false;
+      elf_section_type (htab->plt_sframe) = SHT_GNU_SFRAME;
+    }
 
   if (!bfd_link_pic (info))
     htab->sdyntdata
@@ -2734,6 +2846,19 @@ loongarch_elf_late_size_sections (struct bfd_link_info *info)
   htab_traverse (htab->loc_hash_table,
 		 elfNN_allocate_local_ifunc_dynrelocs, info);
 
+  if (htab->plt_sframe != NULL
+      && htab->elf.splt != NULL
+      && htab->elf.splt->size != 0
+      && !bfd_is_abs_section (htab->elf.splt->output_section)
+      && _bfd_elf_sframe_present (info))
+    {
+      if (!loongarch_elf_create_sframe_plt (info))
+	return false;
+      /* Keep the section until its exact size is known during
+	 serialization.  */
+      htab->plt_sframe->size = sizeof (sframe_header) + 1;
+    }
+
   /* Don't allocate .got.plt section if there are no PLT.  */
   if (htab->elf.sgotplt && htab->elf.sgotplt->size == GOTPLT_HEADER_SIZE
       && (htab->elf.splt == NULL || htab->elf.splt->size == 0))
@@ -2767,7 +2892,8 @@ loongarch_elf_late_size_sections (struct bfd_link_info *info)
 
       if (s == htab->elf.splt || s == htab->elf.iplt || s == htab->elf.sgot
 	  || s == htab->elf.sgotplt || s == htab->elf.igotplt
-	  || s == htab->elf.sdynbss || s == htab->elf.sdynrelro)
+	  || s == htab->elf.sdynbss || s == htab->elf.sdynrelro
+	  || s == htab->plt_sframe)
 	{
 	  /* Strip this section if we don't need it; see the
 	     comment below.  */
@@ -2813,6 +2939,10 @@ loongarch_elf_late_size_sections (struct bfd_link_info *info)
       if ((s->flags & SEC_HAS_CONTENTS) == 0)
 	continue;
 
+      /* The PLT SFrame section is serialized after its size is finalized.  */
+      if (s == htab->plt_sframe)
+	continue;
+
       /* Allocate memory for the section contents.  Zero the memory
 	 for the benefit of .rela.plt, which has 4 unused entries
 	 at the beginning, and we don't want garbage.  */
@@ -2821,6 +2951,12 @@ loongarch_elf_late_size_sections (struct bfd_link_info *info)
 	return false;
       s->alloced = 1;
     }
+
+  if (htab->plt_sframe != NULL
+      && htab->plt_sframe->size != 0
+      && htab->plt_sframe->contents == NULL
+      && !loongarch_elf_write_sframe_plt (info))
+    return false;
 
   if (elf_hash_table (info)->dynamic_sections_created)
     {
@@ -6762,6 +6898,29 @@ loongarch_elf_finish_dynamic_sections (struct bfd_link_info *info,
 	}
 
       elf_section_data (output_section)->this_hdr.sh_entsize = GOT_ENTRY_SIZE;
+    }
+
+  if (htab->plt_sframe != NULL && htab->plt_sframe->contents != NULL)
+    {
+      if (htab->elf.splt != NULL
+	  && htab->elf.splt->size != 0
+	  && (htab->elf.splt->flags & SEC_EXCLUDE) == 0
+	  && htab->elf.splt->output_section != NULL
+	  && htab->plt_sframe->output_section != NULL)
+	{
+	  bfd_vma plt_start = htab->elf.splt->output_section->vma;
+	  bfd_vma sframe_start = htab->plt_sframe->output_section->vma
+				 + htab->plt_sframe->output_offset
+				 + PLT_SFRAME_FDE_START_OFFSET;
+	  bfd_put_signed_64 (dynobj, plt_start - sframe_start,
+			     htab->plt_sframe->contents
+			     + PLT_SFRAME_FDE_START_OFFSET);
+	}
+      if (htab->plt_sframe->sec_info_type == SEC_INFO_TYPE_SFRAME
+	  && !_bfd_elf_merge_section_sframe (info->output_bfd, info,
+					    htab->plt_sframe,
+					    htab->plt_sframe->contents))
+	return false;
     }
 
   return true;
