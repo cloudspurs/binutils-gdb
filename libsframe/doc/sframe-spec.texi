@@ -88,7 +88,7 @@ of type @code{PT_GNU_SFRAME}.  An ELF SFrame section will have the type
 @code{SHT_GNU_SFRAME}.
 
 The SFrame format is currently supported only for select ABIs, namely, AMD64,
-AAPCS64, and s390x.
+AAPCS64, s390x, and LoongArch.
 
 A portion of the SFrame format follows an unaligned on-disk representation.
 Some data structures, however, (namely the SFrame header and the SFrame
@@ -169,6 +169,9 @@ indicate an outermost frame.
 @item On s390x, use FDE type @code{SFRAME_FDE_TYPE_FLEX} to encode FP/RA
 recovery from REG, instead of encoding DWARF register number in the SFrame FRE
 variable-length data of FDE type @code{SFRAME_FDE_TYPE_DEFAULT}.
+@item On LoongArch, use FDE type @code{SFRAME_FDE_TYPE_FLEX} for non-SP/FP CFA
+tracking or when FP or RA recovery requires a register or dereference rule.
+Default FDEs encode stack-based CFA, RA, and FP recovery rules only.
 @end itemize
 
 @node Changes from Version 1 to Version 2
@@ -694,7 +697,7 @@ From MSB to LSB:
 in the SFrame FDE.  Two possible values: @*
 @code{SFRAME_AARCH64_PAUTH_KEY_A} (0), or @*
 @code{SFRAME_AARCH64_PAUTH_KEY_B} (1). @*
-Unsed in AMD64, s390x
+Unused in AMD64, s390x, and LoongArch.
 
 @item 4
 @tab @code{fde_pctype}
@@ -1031,6 +1034,7 @@ supported architectures.
 * AMD64::
 * AArch64::
 * s390x::
+* LoongArch::
 @end menu
 
 @node AMD64
@@ -1148,6 +1152,43 @@ The s390x ELF ABI defines the CFA as stack pointer (SP) at call site +160.  The
 SP can therefore be obtained using the SP value offset from CFA
 @code{SFRAME_S390X_SP_VAL_OFFSET} of -160 as follows:
 SP = CFA + @code{SFRAME_S390X_SP_VAL_OFFSET}
+
+@node LoongArch
+@subsection LoongArch
+
+Irrespective of the ABI, the first stack offset is always used to locate the
+CFA, by interpreting it as: CFA = @code{BASE_REG} + offset1.  The
+identification of the @code{BASE_REG} is done by using the
+@code{fre_cfa_base_reg_id} field in the SFrame FRE info byte.
+
+The first data word for a LoongArch default FDE describes the CFA.  When the
+return address (RA) is saved on the stack, the next data word describes the RA
+stack slot as RA = CFA + offset2.  When the frame pointer (FP) is also saved on
+the stack, the following data word describes the FP stack slot as
+FP = CFA + offset3.
+
+If RA is not tracked for the current range, but FP is saved on the stack, the
+FP recovery rule uses the second data word instead, interpreted as
+FP = CFA + offset2.  Unlike s390x, LoongArch does not use
+@code{SFRAME_FRE_RA_OFFSET_INVALID} as padding when RA is not tracked.
+
+Hence, in summary:
+
+@multitable @columnfractions .15 .85
+@headitem Offset ID @tab Interpretation in LoongArch
+@item 1 @tab CFA = @code{BASE_REG} + offset1
+@item 2 @tab RA stack slot = CFA + offset2, or FP stack slot = CFA + offset2
+@*if RA is not tracked
+@item 3 @tab FP stack slot = CFA + offset3
+@end multitable
+
+For default FDEs, the number of stack offsets seen on LoongArch per SFrame FRE
+is one, two, or three.  A function with no tracked RA or FP has only the CFA
+data word.
+
+If CFA tracking uses a register other than SP or FP, or if RA or FP recovery
+requires a register or dereference rule, SFrame FDE of type
+@code{SFRAME_FDE_TYPE_FLEX} is used.
 
 Future ABIs must specify the algorithm for identifying the appropriate SFrame
 FRE stack offsets in this chapter.  This should inevitably include the

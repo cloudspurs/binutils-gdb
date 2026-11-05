@@ -143,7 +143,8 @@ extern "C"
      - CFA may be non-SP/FP based.
      - CFA, FP may encode dereferencing of register after offset adjustment
      - RA may be in a non-default register.
-   Currently used for SFRAME_ABI_AMD64_ENDIAN_LITTLE.  */
+   Currently used for SFRAME_ABI_AMD64_ENDIAN_LITTLE,
+   SFRAME_ABI_S390X_ENDIAN_BIG, and SFRAME_ABI_LOONGARCH_ENDIAN_LITTLE.  */
 #define SFRAME_FDE_TYPE_FLEX	  1
 
 typedef struct sframe_preamble
@@ -214,7 +215,8 @@ typedef struct sframe_func_desc_entry_v2
      - 2-bits: Unused.
      ------------------------------------------------------------------------
      |     Unused    |  PAC auth A/B key (aarch64) |  FDE type |   FRE type   |
-     |               |     Unused (amd64, s390x)   |           |              |
+     |               |     Unused (amd64, s390x,   |           |              |
+     |               |         loongarch)          |           |              |
      ------------------------------------------------------------------------
      8               6                             5           4              0     */
   uint8_t sfde_func_info;
@@ -399,7 +401,8 @@ typedef struct sframe_fre_info
      - 1 bit: Mangled RA state bit (aarch64 only).
      ----------------------------------------------------------------------------------
      | Mangled-RA (aarch64) | Size of Data Words |  Number of Data Words  |   base_reg |
-     | Unused (amd64, s390x)|                    |                        |            |
+     | Unused (amd64, s390x,|                    |                        |            |
+     | loongarch)           |                    |                        |            |
      ----------------------------------------------------------------------------------
      8                     7                    5                        1            0
 
@@ -437,7 +440,7 @@ typedef struct sframe_fre_info
 
 /* SFrame Frame Row Entry definitions.
 
-   Used for Default FDEs in AMD64, AARCH64, and s390x.
+   Used for Default FDEs in AMD64, AArch64, s390x, and LoongArch.
 
    An SFrame Frame Row Entry is a self-sufficient record which contains
    information on how to generate the stack trace for the specified range of
@@ -480,6 +483,18 @@ typedef struct sframe_fre_info
     are used in SFrame V3.  In SFrame V2, default FDEs were used: the
     least-significant bit of the offset was set to indicate that the encoded
     value is a DWARF register number shifted to the left by 1.
+
+   LoongArch:
+     offset1 (interpreted as CFA = BASE_REG + offset1)
+     if RA is being tracked
+       offset2 (interpreted as RA = CFA + offset2)
+       if FP is being tracked
+	 offset3 (interpreted as FP = CFA + offset3)
+       fi
+     fi
+     A default FDE has no independent marker for FP presence.  If RA has no
+     stack recovery rule but FP is recovered from the stack, or if FP or RA
+     is recovered from a register or expression, a flex FDE is used.
 */
 
 /* Used when SFRAME_FRE_TYPE_ADDR1 is specified as FRE type.  */
