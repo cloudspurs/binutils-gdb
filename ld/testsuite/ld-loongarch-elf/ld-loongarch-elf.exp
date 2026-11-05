@@ -60,6 +60,7 @@ if [istarget "loongarch64-*-*"] {
     run_dump_test "sframe-flex-fde-ld-r"
     run_dump_test "sframe-flex-fde-ld"
     run_dump_test "sframe-plt"
+    run_dump_test "plt-jump"
 
     # Tidy up, to not leave huge intermediate files.
     remote_file host delete tmpdir/relax-medium-call.o

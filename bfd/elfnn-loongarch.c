@@ -335,7 +335,7 @@ loongarch_make_plt_header (bfd_vma got_plt_addr, bfd_vma plt_header_addr,
   /* pcaddu12i  $t2, %hi(%pcrel(.got.plt))
      sub.[wd]   $t1, $t1, $t3
      ld.[wd]    $t3, $t2, %lo(%pcrel(.got.plt)) # _dl_runtime_resolve
-     addi.[wd]  $t1, $t1, -(PLT_HEADER_SIZE + 12)
+     addi.[wd]  $t1, $t1, -(PLT_HEADER_SIZE + 8)
      addi.[wd]  $t0, $t2, %lo(%pcrel(.got.plt))
      srli.[wd]  $t1, $t1, log2(16 / GOT_ENTRY_SIZE)
      ld.[wd]    $t0, $t0, GOT_ENTRY_SIZE
@@ -346,7 +346,7 @@ loongarch_make_plt_header (bfd_vma got_plt_addr, bfd_vma plt_header_addr,
       entry[0] = 0x1c00000e | (hi & 0xfffff) << 5;
       entry[1] = 0x0011bdad;
       entry[2] = 0x28c001cf | (lo & 0xfff) << 10;
-      entry[3] = 0x02c001ad | ((-(PLT_HEADER_SIZE + 12)) & 0xfff) << 10;
+      entry[3] = 0x02c001ad | ((-(PLT_HEADER_SIZE + 8)) & 0xfff) << 10;
       entry[4] = 0x02c001cc | (lo & 0xfff) << 10;
       entry[5] = 0x004501ad | (4 - LARCH_ELF_LOG_WORD_BYTES) << 10;
       entry[6] = 0x28c0018c | GOT_ENTRY_SIZE << 10;
@@ -357,7 +357,7 @@ loongarch_make_plt_header (bfd_vma got_plt_addr, bfd_vma plt_header_addr,
       entry[0] = 0x1c00000e | (hi & 0xfffff) << 5;
       entry[1] = 0x00113dad;
       entry[2] = 0x288001cf | (lo & 0xfff) << 10;
-      entry[3] = 0x028001ad | ((-(PLT_HEADER_SIZE + 12)) & 0xfff) << 10;
+      entry[3] = 0x028001ad | ((-(PLT_HEADER_SIZE + 8)) & 0xfff) << 10;
       entry[4] = 0x028001cc | (lo & 0xfff) << 10;
       entry[5] = 0x004481ad | (4 - LARCH_ELF_LOG_WORD_BYTES) << 10;
       entry[6] = 0x2880018c | GOT_ENTRY_SIZE << 10;
@@ -387,8 +387,8 @@ loongarch_make_plt_entry (bfd_vma got_plt_entry_addr, bfd_vma plt_entry_addr,
   entry[0] = 0x1c00000f | (hi & 0xfffff) << 5;
   entry[1] = ((GOT_ENTRY_SIZE == 8 ? 0x28c001ef : 0x288001ef)
 	      | (lo & 0xfff) << 10);
-  entry[2] = 0x4c0001ed;	/* jirl $r13, $15, 0 */
-  entry[3] = 0x03400000;	/* nop */
+  entry[2] = 0x1c00000d;	/* pcaddu12i $r13, 0 */
+  entry[3] = 0x4c0001e0;	/* jirl $r0, $r15, 0 */
 
   return true;
 }
