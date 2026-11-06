@@ -450,17 +450,21 @@ typedef struct sframe_fre_info
 
    The interpretation of FRE stack offsets for default FDEs is ABI-specific:
 
+   For stack-based RA and FP recovery rules below, an offset denotes the
+   address of the stack slot holding the saved register value; it is not the
+   value of the register itself.
+
    AMD64:
      offset1 (interpreted as CFA = BASE_REG + offset1)
       if FP is being tracked
-	offset2 (intrepreted as FP = CFA + offset2)
+	offset2 (interpreted as FP = *(CFA + offset2))
       fi
 
     AARCH64:
      offset1 (interpreted as CFA = BASE_REG + offset1)
      if FP is being tracked (in other words, if frame record created)
-       offset2 (interpreted as RA = CFA + offset2)
-       offset3 (intrepreted as FP = CFA + offset3)
+       offset2 (interpreted as RA = *(CFA + offset2))
+       offset3 (interpreted as FP = *(CFA + offset3))
      fi
      Note that in AAPCS64, a frame record, if created, will save both FP and
      LR on stack.
@@ -468,15 +472,15 @@ typedef struct sframe_fre_info
    s390x:
      offset1 (interpreted as CFA = BASE_REG + offset1)
      if RA is being tracked
-       offset2 (interpreted as RA = CFA + offset2; an offset value of
+       offset2 (interpreted as RA = *(CFA + offset2); an offset value of
 	       SFRAME_FRE_RA_OFFSET_INVALID indicates a dummy padding RA offset
 	       to represent FP without RA saved on stack)
        if FP is being tracked
-	 offset3 (intrepreted as FP = CFA + offset3)
+	 offset3 (interpreted as FP = *(CFA + offset3))
        fi
      else
       if FP is being tracked
-	offset2 (intrepreted as FP = CFA + offset2)
+	offset2 (interpreted as FP = *(CFA + offset2))
       fi
     fi
     Note that in s390x, if a FP/RA is to be restored from a register, flex FDEs
@@ -487,9 +491,9 @@ typedef struct sframe_fre_info
    LoongArch:
      offset1 (interpreted as CFA = BASE_REG + offset1)
      if RA is being tracked
-       offset2 (interpreted as RA = CFA + offset2)
+       offset2 (interpreted as RA = *(CFA + offset2))
        if FP is being tracked
-	 offset3 (interpreted as FP = CFA + offset3)
+	 offset3 (interpreted as FP = *(CFA + offset3))
        fi
      fi
      A default FDE has no independent marker for FP presence.  If RA has no
