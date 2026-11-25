@@ -1481,6 +1481,14 @@ loongarch_elf_check_relocs (bfd *abfd, struct bfd_link_info *info,
 	      && (!bfd_link_pic (info)
 		  || h->type == STT_GNU_IFUNC))
 	    {
+	      /* The loader can initialize a writable function pointer.
+		 For a read-only pointer, use the PLT address.  */
+	      if (r_type == R_LARCH_64 && h->type == STT_FUNC
+		  && h->def_dynamic && !h->def_regular
+		  && h->ref_regular_nonweak
+		  && (sec->flags & SEC_READONLY))
+		h->needs_plt = 1;
+
 	      /* This reloc might not bind locally.  */
 	      h->non_got_ref = 1;
 	      h->pointer_equality_needed = 1;
@@ -1745,6 +1753,11 @@ allocate_dynrelocs (struct elf_link_hash_entry *h, void *inf)
 	{
 	  h->root.u.def.section = plt;
 	  h->root.u.def.value = h->plt.offset;
+	  if (h->type == STT_FUNC
+	      && h->pointer_equality_needed
+	      && h->ref_regular_nonweak)
+	    /* Absolute references now resolve to the canonical PLT entry.  */
+	    h->dyn_relocs = NULL;
 	}
 
       h->needs_plt = 1;
@@ -3735,7 +3748,9 @@ loongarch_elf_relocate_section (struct bfd_link_info *info,
 
 	case R_LARCH_32:
 	case R_LARCH_64:
-	  if (resolved_dynly || (is_pic && resolved_local))
+	  if (resolved_dynly && sec != NULL && sec == plt && !h->dyn_relocs)
+	    unresolved_reloc = false;
+	  else if (resolved_dynly || (is_pic && resolved_local))
 	    {
 	      Elf_Internal_Rela outrel;
 

@@ -111,6 +111,31 @@ if [istarget "loongarch64-*-*"] {
 	pass "data plt"
       }
     }
+
+    run_ld_link_tests \
+	[list \
+	    [list \
+		"rodata-func-ptr-lib" \
+		"-shared" "" \
+		"" \
+		{rodata-func-ptr-lib.s} \
+		{} \
+		"rodata-func-ptr-lib.so"] \
+	]
+
+    if [file exist "tmpdir/rodata-func-ptr-lib.so"] {
+      run_ld_link_tests \
+	[list \
+	    [list \
+	    "rodata-func-ptr" \
+	    "-no-pie -z text -e 0 --section-start=.plt=0x120010000" \
+	    "tmpdir/rodata-func-ptr-lib.so" "" \
+	    {rodata-func-ptr.s} \
+	    {{readelf {-Wr --dyn-syms -x .rodata} rodata-func-ptr.d}} \
+	    "rodata-func-ptr"
+	    ]
+	]
+    }
   }
 
   run_ld_link_tests \
